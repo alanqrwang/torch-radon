@@ -6,7 +6,7 @@ from parameterized import parameterized
 from torch_radon import Radon
 from .astra_wrapper import AstraWrapper
 from .utils import generate_random_images, relative_error, circle_mask
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 device = torch.device('cuda')
 
@@ -52,11 +52,11 @@ def test_error(device, batch_size, image_size, angles, spacing, det_count, clip_
     forward_error = relative_error(astra_fp, our_fp.cpu().numpy())
     back_error = relative_error(astra_bp, our_bp.cpu().numpy())
 
-    if back_error > 1e-2:
-        plt.imshow(astra_bp[0])
-        plt.figure()
-        plt.imshow((our_bp[0].cpu().numpy() - astra_bp[0]))
-        plt.show()
+    # if back_error > 1e-2:
+    #     plt.imshow(astra_bp[0])
+    #     plt.figure()
+    #     plt.imshow((our_bp[0].cpu().numpy() - astra_bp[0]))
+    #     plt.show()
 
     print(
         f"batch: {batch_size}, size: {image_size}, angles: {len(angles)}, spacing: {spacing}, det_count: {det_count}, circle: {clip_to_circle}, forward: {forward_error}, back: {back_error}")

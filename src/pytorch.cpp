@@ -24,17 +24,28 @@ torch::Tensor radon_forward(torch::Tensor x, torch::Tensor angles, TextureCache 
 
     // allocate output sinogram tensor
     auto options = torch::TensorOptions().dtype(dtype).device(x.device());
-    auto y = torch::empty({batch_size, rays_cfg.n_angles, rays_cfg.det_count}, options);
 
-    if (dtype == torch::kFloat16) {
-        radon_forward_cuda((unsigned short *) x.data_ptr<at::Half>(), angles.data_ptr<float>(),
-                           (unsigned short *) y.data_ptr<at::Half>(),
-                           tex_cache, rays_cfg, batch_size, device);
-    } else {
-        radon_forward_cuda(x.data_ptr<float>(), angles.data_ptr<float>(), y.data_ptr<float>(),
-                           tex_cache, rays_cfg, batch_size, device);
+    if(rays_cfg.is_3d()){
+        auto y = torch::empty({batch_size, rays_cfg.n_angles, rays_cfg.det_count_z, rays_cfg.det_count}, options);
+
+        radon_forward_cuda_3d(x.data_ptr<float>(), angles.data_ptr<float>(), y.data_ptr<float>(),
+                              tex_cache, rays_cfg, batch_size, device);
+
+        return y;
+    }else{
+        auto y = torch::empty({batch_size, rays_cfg.n_angles, rays_cfg.det_count}, options);
+
+        if (dtype == torch::kFloat16) {
+            radon_forward_cuda((unsigned short *) x.data_ptr<at::Half>(), angles.data_ptr<float>(),
+                               (unsigned short *) y.data_ptr<at::Half>(),
+                               tex_cache, rays_cfg, batch_size, device);
+        } else {
+            radon_forward_cuda(x.data_ptr<float>(), angles.data_ptr<float>(), y.data_ptr<float>(),
+                               tex_cache, rays_cfg, batch_size, device);
+        }
+        return y;
     }
-    return y;
+
 }
 
 torch::Tensor
@@ -245,16 +256,9 @@ def (py::init<const uint>())
 .def("set_seed", (void (RadonNoiseGenerator::*)(const uint)) &RadonNoiseGenerator::set_seed)
 .def("free", &RadonNoiseGenerator::free);
 
-py::class_<RaysCfg>(m,
-"RaysCfg")
-.
-
-def (py::init<int, int, int, float, int, bool>())
-
-.
-
-def (py::init<int, int, int, float, int, bool, float, float>())
-
-.def_readwrite("det_count", &RaysCfg::det_count);
+py::class_<RaysCfg>(m,"RaysCfg")
+    .def(py::init<int, int, int, int, float, int, float, int, bool, float, float, int, float, float>())
+    //.def (py::init<int, int, int, float, int, bool, float, float>())
+    .def_readwrite("det_count", &RaysCfg::det_count);
 }
 

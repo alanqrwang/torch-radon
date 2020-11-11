@@ -5,7 +5,6 @@ import torch
 import numpy as np
 from torch_radon import RadonFanbeam
 from parameterized import parameterized
-import matplotlib.pyplot as plt
 
 device = torch.device('cuda')
 

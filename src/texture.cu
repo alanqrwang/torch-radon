@@ -28,11 +28,20 @@ Texture::Texture(DeviceSizeKey k) : key(k) {
     std::cout << "[TORCH RADON] Allocating Texture " << this->key << std::endl;
 #endif
 
+    bool is_3d = k.depth != 0;
+
     // Allocate a layered CUDA array
     cudaChannelFormatDesc channelDesc = get_channel_desc(key.channels, key.precision);
-    const cudaExtent extent = make_cudaExtent(k.width, k.height, k.batch / key.channels);
-//    std::cout << k << std::endl;
-    checkCudaErrors(cudaMalloc3DArray(&array, &channelDesc, extent, cudaArrayLayered));
+
+    int d = is_3d ? k.depth : (k.batch / key.channels);
+    const cudaExtent extent = make_cudaExtent(k.width, k.height, d);
+
+    #ifdef VERBOSE
+    std::cout << "[TORCH RADON] Allocating Texture " << k.width << " " << k.height << " " << d << std::endl;
+#endif
+
+    auto allocation_type = is_3d ? cudaArrayDefault : cudaArrayLayered;
+    checkCudaErrors(cudaMalloc3DArray(&array, &channelDesc, extent, allocation_type));
 
     // Create resource descriptor
     cudaResourceDesc resDesc;
@@ -43,8 +52,10 @@ Texture::Texture(DeviceSizeKey k) : key(k) {
     // Specify texture object parameters
     cudaTextureDesc texDesc;
     memset(&texDesc, 0, sizeof(texDesc));
+    // texDesc.borderColor[0] = 100.0;
     texDesc.addressMode[0] = cudaAddressModeBorder;
     texDesc.addressMode[1] = cudaAddressModeBorder;
+    texDesc.addressMode[2] = cudaAddressModeBorder;
     texDesc.filterMode = cudaFilterModeLinear;
     texDesc.readMode = cudaReadModeElementType;
     texDesc.normalizedCoords = 0;
@@ -83,7 +94,12 @@ void Texture::put(const float *data) {
 
     checkCudaErrors(cudaSetDevice(this->key.device));
 
+    // if using a single channel use cudaMemcpy else use custom kernel to copy the data
     if (key.channels == 1) {
+    #ifdef VERBOSE
+    std::cout << "[TORCH RADON] Putting data into texture" << std::endl;
+#endif
+
         // copy data into array
         cudaMemcpy3DParms myparms = {0};
         myparms.srcPos = make_cudaPos(0, 0, 0);
@@ -91,7 +107,10 @@ void Texture::put(const float *data) {
         myparms.srcPtr = make_cudaPitchedPtr((void *) data, key.width * sizeof(float), this->key.width,
                                              this->key.height);
         myparms.dstArray = this->array;
-        myparms.extent = make_cudaExtent(this->key.width, this->key.height, this->key.batch);
+        myparms.extent = make_cudaExtent(this->key.width, this->key.height, this->key.z_size());
+            #ifdef VERBOSE
+    std::cout << myparms.extent.width << " " << myparms.extent.height << " " << myparms.extent.depth << std::endl;
+#endif
         myparms.kind = cudaMemcpyDeviceToDevice;
         checkCudaErrors(cudaMemcpy3D(&myparms));
     } else {

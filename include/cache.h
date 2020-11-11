@@ -13,13 +13,17 @@ public:
     int batch;
     int width;
     int height;
+    int depth;
 
     int channels;
     int precision;
 
-    DeviceSizeKey(int d, int b, int w, int h, int c=1, int p=1);
+    DeviceSizeKey(int dv, int b, int w, int h, int d=0, int c=1, int p=1);
 
     bool operator==(const DeviceSizeKey &o) const;
+
+    bool is_3d() const;
+    int z_size() const;
 };
 
 std::ostream &operator<<(std::ostream &os, DeviceSizeKey const &m);

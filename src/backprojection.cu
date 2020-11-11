@@ -104,7 +104,7 @@ void radon_backward_cuda(
     const int channels = (batch_size % 4 == 0) ? 4 : 1;
 
     // copy x into CUDA Array (allocating it if needed) and bind to texture
-    Texture *tex = tex_cache.get({device, batch_size, cfg.det_count, cfg.n_angles, channels, precision});
+    Texture *tex = tex_cache.get({device, batch_size, cfg.det_count, cfg.n_angles, 0, channels, precision});
     tex->put(x);
 
     const int grid_size_h = roundup_div(cfg.height, 16);
@@ -113,7 +113,7 @@ void radon_backward_cuda(
     dim3 block_dim(16, 16);
 
     // Invoke kernel
-    if (cfg.is_fanbeam) {
+    if (cfg.is_fanbeam()) {
         if (channels == 1) {
             if (cfg.clip_to_circle) {
                 radon_backward_kernel<false, 1, true> << < grid_dim, block_dim >> > (y, tex->texture, angles, cfg);

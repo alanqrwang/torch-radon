@@ -166,7 +166,20 @@ class Radon(BaseRadon):
         if det_count <= 0:
             det_count = resolution
 
-        rays_cfg = RaysCfg(resolution, resolution, det_count, det_spacing, len(angles), clip_to_circle)
+        rays_cfg = RaysCfg(
+            # width, height, depth
+            resolution, resolution, 0,
+            # det_count, det_spacing, det_count_z, det_spacing_z
+            det_count, det_spacing, 0, 0.0,
+            # n_angles, clip_to_circle
+            len(angles), clip_to_circle,
+            # source and detector distances
+            0.0, 0.0,
+            # projection type
+            0,
+            # pitch, initial_z
+            0.0, 0.0
+        )
 
         super().__init__(angles, rays_cfg)
 
@@ -211,8 +224,22 @@ class RadonFanbeam(BaseRadon):
         if det_spacing < 0:
             det_spacing = (source_distance + det_distance) / source_distance
 
-        rays_cfg = RaysCfg(resolution, resolution, det_count, det_spacing, len(angles), clip_to_circle,
-                           source_distance, det_distance)
+        # rays_cfg = RaysCfg(resolution, resolution, det_count, det_spacing, len(angles), clip_to_circle,
+        #                    source_distance, det_distance)
+        rays_cfg = RaysCfg(
+            # width, height, depth
+            resolution, resolution, 0,
+            # det_count, det_spacing, det_count_z, det_spacing_z
+            det_count, det_spacing, 0, 0.0,
+            # n_angles, clip_to_circle
+            len(angles), clip_to_circle,
+            # source and detector distances
+            source_distance, det_distance,
+            # projection type
+            1,
+            # pitch, initial_z
+            0.0, 0.0
+        )
 
         super().__init__(angles, rays_cfg)
 

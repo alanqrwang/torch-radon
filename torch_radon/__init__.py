@@ -3,17 +3,17 @@ import torch
 import scipy.stats
 import abc
 import torch.nn.functional as F
-import warnings
+from typing import Union
 
 try:
     import torch_radon_cuda
-    from torch_radon_cuda import VolumeCfg, ProjectionCfg, ExecCfg
 except Exception as e:
-    print("Importing exception")
+    print("Error importing torch_radon_cuda:", e)
 
 from .differentiable_functions import RadonForward, RadonBackprojection
-from .utils import normalize_shape
+from .utils import normalize_shape, ShapeNormalizer
 from .filtering import FourierFilters
+from .parameter_classes import Volume, Projection
 
 __version__ = "1.0.0"
 
@@ -30,17 +30,29 @@ class ExecCfgGeneratorBase:
         return ExecCfg(16, 16, 1, 4)
 
 
-class BaseRadon(abc.ABC):
-    def __init__(self, angles, vol_cfg, proj_cfg, exec_cfg_generator):
-        self.vol_cfg = vol_cfg
-        self.proj_cfg = proj_cfg
-        self.exec_cfg_generator = exec_cfg_generator
-
+class Radon:
+    def __init__(self, angles: Union[list, np.array, torch.Tensor], volume: Union[int, tuple, Volume],
+                 projection: Projection = None):
+        # make sure that angles are a PyTorch tensor
         if not isinstance(angles, torch.Tensor):
             angles = torch.FloatTensor(angles)
 
+        if isinstance(volume, int):
+            volume = Volume.create_2d(volume, volume)
+        elif isinstance(volume, tuple):
+            volume = Volume.create_2d(*volume) if len(volume) == 2 else Volume.create_3d(*volume)
+
+        if projection is None:
+            projection = Projection.parallel_beam(volume.max_dim())
+
         # change sign to conform to Astra and Scikit
-        self.angles = -angles
+        if projection.is_2d():
+            angles = -angles
+
+        self.angles = angles
+        self.volume = volume
+        self.projection = projection
+        self.exec_cfg_generator = ExecCfgGeneratorBase()
 
         # caches used to avoid reallocation of resources
         self.tex_cache = torch_radon_cuda.TextureCache(8)
@@ -53,12 +65,9 @@ class BaseRadon(abc.ABC):
         if device != self.angles.device:
             self.angles = self.angles.to(device)
 
-    def _check_input(self, x, square=False):
+    def _check_input(self, x):
         if not x.is_contiguous():
             x = x.contiguous()
-
-        # if square:
-        #     assert x.size(1) == x.size(2), f"Input images must be square, got shape ({x.size(1)}, {x.size(2)})."
 
         if x.dtype == torch.float16:
             assert x.size(
@@ -66,7 +75,70 @@ class BaseRadon(abc.ABC):
 
         return x
 
-    #@normalize_shape(2)
+    def forward(self, x: torch.Tensor):
+        r"""Radon forward projection.
+
+        :param x: PyTorch GPU tensor.
+        :returns: PyTorch GPU tensor containing sinograms.
+        """
+        x = self._check_input(x)
+        self._move_parameters_to_device(x.device)
+
+        shape_normalizer = ShapeNormalizer(self.volume.num_dimensions())
+        x = shape_normalizer.normalize(x)
+
+        y = RadonForward.apply(x, self.angles, self.tex_cache, self.volume.cfg, self.projection.cfg,
+                               self.exec_cfg_generator)
+
+        return shape_normalizer.unnormalize(y)
+
+    def backprojection(self, sinogram):
+        r"""Radon backward projection.
+
+        :param sinogram: PyTorch GPU tensor containing sinograms.
+        :returns: PyTorch GPU tensor containing backprojected volume.
+        """
+        sinogram = self._check_input(sinogram)
+        self._move_parameters_to_device(sinogram.device)
+
+        shape_normalizer = ShapeNormalizer(self.volume.num_dimensions())
+        sinogram = shape_normalizer.normalize(sinogram)
+
+        y = RadonBackprojection.apply(sinogram, self.angles, self.tex_cache, self.volume.cfg, self.projection.cfg,
+                                      self.exec_cfg_generator)
+
+        return shape_normalizer.unnormalize(y)
+
+    def backward(self, sinogram):
+        r"""Radon backward projection.
+
+        :param sinogram: PyTorch GPU tensor containing sinograms.
+        :returns: PyTorch GPU tensor containing backprojected volume.
+        """
+        return self.backprojection(sinogram)
+
+    def set_seed(self, seed=-1):
+        if seed < 0:
+            seed = np.random.get_state()[1][0]
+
+        self.noise_generator.set_seed(seed)
+
+    def __del__(self):
+        self.noise_generator.free()
+
+
+class BaseRadon(abc.ABC):
+    def __init__(self, angles, vol_cfg, proj_cfg, exec_cfg_generator):
+        self.vol_cfg = vol_cfg
+        self.proj_cfg = proj_cfg
+        self.exec_cfg_generator = exec_cfg_generator
+
+        if not isinstance(angles, torch.Tensor):
+            angles = torch.FloatTensor(angles)
+
+        self.angles = -angles
+
+    # @normalize_shape(2)
     def forward(self, x):
         r"""Radon forward projection.
 
@@ -79,7 +151,7 @@ class BaseRadon(abc.ABC):
 
         return RadonForward.apply(x, self.angles, self.tex_cache, self.vol_cfg, self.proj_cfg, self.exec_cfg_generator)
 
-    #@normalize_shape(2)
+    # @normalize_shape(2)
     def backprojection(self, sinogram):
         r"""Radon backward projection.
 
@@ -122,10 +194,6 @@ class BaseRadon(abc.ABC):
 
         return filtered_sinogram.to(dtype=sinogram.dtype)
 
-    def backward(self, sinogram):
-        r"""Same as backprojection"""
-        return self.backprojection(sinogram)
-
     @normalize_shape(2)
     def add_noise(self, x, signal, density_normalization=1.0, approximate=False):
         # print("WARN Radon.add_noise is deprecated")
@@ -144,15 +212,6 @@ class BaseRadon(abc.ABC):
     @normalize_shape(2)
     def readings_lookup(self, sensor_readings, lookup_table):
         return torch_radon_cuda.readings_lookup(sensor_readings, lookup_table)
-
-    def set_seed(self, seed=-1):
-        if seed < 0:
-            seed = np.random.get_state()[1][0]
-
-        self.noise_generator.set_seed(seed)
-
-    def __del__(self):
-        self.noise_generator.free()
 
 
 class Radon(BaseRadon):

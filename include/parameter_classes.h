@@ -1,6 +1,8 @@
+#include <string>
 #include <cuda.h>
 #include "defines.h"
 #include "utils.h"
+
 
 #ifndef TORCH_RADON_PARAMETER_CLASSES_H
 #define TORCH_RADON_PARAMETER_CLASSES_H
@@ -20,22 +22,6 @@ public:
     bool is_3d;
 
     VolumeCfg(int d, int h, int w, float _dz, float _dy, float _dx, bool ddd);
-
-//    __device__ __inline__ float get_bound() const {
-//        // return the maximum distance from the origin of a point contained in the volume
-//
-//        // assume it is not 3D
-//        return hypot(abs(dx) + width * 0.5f, abs(dy) + height * 0.5f);
-//    }
-//
-//    __device__ __inline__ float min_x() const { return dx - 0.5f * width; }
-//
-//    __device__ __inline__ float max_x() const { return dx + 0.5f * width; }
-//
-//    __device__ __inline__ float min_y() const { return dy - 0.5f * height; }
-//
-//    __device__ __inline__ float max_y() const { return dy + 0.5f * height; }
-
 };
 
 class ProjectionCfg {
@@ -59,8 +45,10 @@ public:
 
     int projection_type;
 
-    ProjectionCfg(int dc_u, float ds_u, int dc_v, float ds_v, int na, bool ctc, float sd, float dd,
-                  float pi, float iz, int pt);
+    ProjectionCfg(int dc_u, float ds_u, int dc_v=0, float ds_v=1.0f, float sd=0.0f, float dd=0.0f,
+                  float pi=0.0f, float iz=0.0f, int pt=0);
+
+    std::string to_string() const;
 
 //    __device__ __inline__ float det_pixel_pos_u(int p) const {
 //        //get the position of the detector pixel p on the u axis

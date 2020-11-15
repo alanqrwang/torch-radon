@@ -60,7 +60,8 @@ def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/
 
     include_flags = [f"-I{x}" for x in include_dirs]
     cxx_flags = ["-std=c++11 -fPIC -static"] + include_flags + ["-O3"]
-    nvcc_flags = ["-std=c++11", f"-ccbin={cxx}", "-Xcompiler", "-fPIC", "-Xcompiler -static"] + include_flags + \
+    nvcc_flags = ["-std=c++11", f"-ccbin={cxx}", "-Xcompiler", "-fPIC", "-Xcompiler -static",
+                  "-Xcompiler -D_GLIBCXX_USE_CXX11_ABI=0"] + include_flags + \
                  [f"-gencode arch=compute_{x},code=sm_{x}" for x in compute_capabilites] + [
                      "-DNDEBUG -O3 --generate-line-info --compiler-options -Wall"]
 

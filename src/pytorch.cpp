@@ -274,12 +274,17 @@ py::class_<VolumeCfg>(m,"VolumeCfg")
     .def(py::init<int, int, int, float, float, float, bool>())
     .def_readonly("depth", &VolumeCfg::depth)
     .def_readonly("height", &VolumeCfg::height)
-    .def_readonly("width", &VolumeCfg::width);
+    .def_readonly("width", &VolumeCfg::width)
+    .def_readonly("dx", &VolumeCfg::dx)
+    .def_readonly("dy", &VolumeCfg::dy)
+    .def_readonly("dz", &VolumeCfg::dz)
+    .def_readonly("is_3d", &VolumeCfg::is_3d);
 
 py::class_<ProjectionCfg>(m,"ProjectionCfg")
-    .def(py::init<int, float, int, float, int, bool, float, float, float, float, int>())
+    .def(py::init<int, float>())
+    .def(py::init<int, float, int, float, float, float, float, float, int>())
+    .def("__repr__", &ProjectionCfg::to_string)
     .def_readonly("projection_type", &ProjectionCfg::projection_type);
-
 
 py::class_<ExecCfg>(m,"ExecCfg")
     .def(py::init<int, int, int, int>());

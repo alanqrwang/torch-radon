@@ -1,13 +1,24 @@
 #include "parameter_classes.h"
+#include "utils.h"
 
 VolumeCfg::VolumeCfg(int d, int h, int w, float _dz, float _dy, float _dx, bool ddd)
         : depth(d), height(h), width(w), dz(_dz), dy(_dy), dx(_dx), is_3d(ddd) {}
 
-ProjectionCfg::ProjectionCfg(int dc_u, float ds_u, int dc_v, float ds_v, int na, bool ctc, float sd, float dd,
+ProjectionCfg::ProjectionCfg(int dc_u, float ds_u, int dc_v, float ds_v, float sd, float dd,
                   float pi, float iz, int pt)
             : det_count_u(dc_u), det_spacing_u(ds_u), det_count_v(dc_v),
-              det_spacing_v(ds_v), n_angles(na), clip_to_circle(ctc), s_dist(sd), d_dist(dd), pitch(pi), initial_z(iz),
+              det_spacing_v(ds_v), s_dist(sd), d_dist(dd), pitch(pi), initial_z(iz),
               projection_type(pt) {}
+
+
+std::string ProjectionCfg::to_string() const{
+    switch(projection_type){
+        case PARALLEL:
+            return string_format("Projection(type=ParallelBeam, det_count=%d, det_spacing=%f)", det_count_u, det_spacing_u);
+        default:
+            return "TODO";
+    }
+}
 
 
 ExecCfg::ExecCfg(int x, int y, int z, int ch)

@@ -272,7 +272,7 @@ class RadonFanbeam(BaseRadon):
 
 class RadonConeFlat(BaseRadon):
     def __init__(self, volume_shape, angles, source_distance: float, det_distance: float = -1, det_count: int = -1,
-                 det_spacing: float = -1):
+                 det_spacing: float = -1, pitch=0.0):
 
         resolution = max(volume_shape)
 
@@ -299,7 +299,7 @@ class RadonConeFlat(BaseRadon):
             # source and detector distances
             source_distance, det_distance,
             # pitch, initial_z
-            0.0, 0.0,
+            pitch, 0.0,
             # projection type
             2
         )

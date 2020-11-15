@@ -20,7 +20,7 @@ for batch_size in [1, 8]:
             for spacing in [1.0, 0.5, 1.3, 2.0]:
                 for distances in [(1.2, 1.2), (2.0, 2.0), (1.2, 3.0)]:
                     for det_count in [1.0, 1.5]:
-                        for clip_to_circle in [False, True]:
+                        for clip_to_circle in [False]:
                             params.append((device, batch_size, image_size, angles, spacing, distances, det_count, clip_to_circle))
 
 half_params = [x for x in params if x[1] % 4 == 0]

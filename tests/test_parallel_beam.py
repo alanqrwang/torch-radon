@@ -6,7 +6,7 @@ from parameterized import parameterized
 from torch_radon import Radon
 from .astra_wrapper import AstraWrapper
 from .utils import generate_random_images, relative_error, circle_mask
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 device = torch.device('cuda')
 
@@ -21,7 +21,7 @@ for batch_size in [1, 8, 16]:  # , 64, 128]:  # , 256, 512]:
         for angles in [full_angles, limited_angles, sparse_angles, many_angles]:
             for spacing in [1.0, 0.5, 1.3, 2.0]:
                 for det_count in [1.0, 1.5]:
-                    for clip_to_circle in [False, True]:
+                    for clip_to_circle in [False]:
                         params.append((device, batch_size, image_size, angles, spacing, det_count, clip_to_circle))
 
 half_params = [x for x in params if x[1] % 4 == 0]
@@ -52,11 +52,16 @@ def test_error(device, batch_size, image_size, angles, spacing, det_count, clip_
     forward_error = relative_error(astra_fp, our_fp.cpu().numpy())
     back_error = relative_error(astra_bp, our_bp.cpu().numpy())
 
-    # if back_error > 1e-2:
-    #     plt.imshow(astra_bp[0])
-    #     plt.figure()
-    #     plt.imshow((our_bp[0].cpu().numpy() - astra_bp[0]))
-    #     plt.show()
+    if back_error > 1e-2:
+        fig, ax = plt.subplots(2, 3)
+        ax = ax.ravel()
+        ax[0].imshow(astra_fp[5])
+        ax[1].imshow(our_fp[5].cpu().numpy())
+        ax[2].imshow(astra_fp[5] - our_fp[5].cpu().numpy())
+        ax[3].imshow(astra_bp[5])
+        ax[4].imshow(our_bp[5].cpu().numpy())
+        ax[5].imshow(astra_bp[5] - our_bp[5].cpu().numpy())
+        plt.show()
 
     print(
         f"batch: {batch_size}, size: {image_size}, angles: {len(angles)}, spacing: {spacing}, det_count: {det_count}, circle: {clip_to_circle}, forward: {forward_error}, back: {back_error}")

@@ -7,7 +7,7 @@ import warnings
 
 try:
     import torch_radon_cuda
-    from torch_radon_cuda import RaysCfg
+    from torch_radon_cuda import VolumeCfg, ProjectionCfg, ExecCfg
 except Exception as e:
     print("Importing exception")
 
@@ -18,9 +18,23 @@ from .filtering import FourierFilters
 __version__ = "1.0.0"
 
 
+class ExecCfgGeneratorBase:
+    def __init__(self):
+        pass
+
+    def __call__(self, vol_cfg, proj_cfg, is_half):
+        if proj_cfg.projection_type == 2:
+            ch = 4 if is_half else 1
+            return ExecCfg(8, 16, 8, ch)
+
+        return ExecCfg(16, 16, 1, 4)
+
+
 class BaseRadon(abc.ABC):
-    def __init__(self, angles, rays_cfg):
-        self.rays_cfg = rays_cfg
+    def __init__(self, angles, vol_cfg, proj_cfg, exec_cfg_generator):
+        self.vol_cfg = vol_cfg
+        self.proj_cfg = proj_cfg
+        self.exec_cfg_generator = exec_cfg_generator
 
         if not isinstance(angles, torch.Tensor):
             angles = torch.FloatTensor(angles)
@@ -43,8 +57,8 @@ class BaseRadon(abc.ABC):
         if not x.is_contiguous():
             x = x.contiguous()
 
-        if square:
-            assert x.size(1) == x.size(2), f"Input images must be square, got shape ({x.size(1)}, {x.size(2)})."
+        # if square:
+        #     assert x.size(1) == x.size(2), f"Input images must be square, got shape ({x.size(1)}, {x.size(2)})."
 
         if x.dtype == torch.float16:
             assert x.size(
@@ -52,7 +66,7 @@ class BaseRadon(abc.ABC):
 
         return x
 
-    @normalize_shape(2)
+    #@normalize_shape(2)
     def forward(self, x):
         r"""Radon forward projection.
 
@@ -63,9 +77,9 @@ class BaseRadon(abc.ABC):
         x = self._check_input(x, square=True)
         self._move_parameters_to_device(x.device)
 
-        return RadonForward.apply(x, self.angles, self.tex_cache, self.rays_cfg)
+        return RadonForward.apply(x, self.angles, self.tex_cache, self.vol_cfg, self.proj_cfg, self.exec_cfg_generator)
 
-    @normalize_shape(2)
+    #@normalize_shape(2)
     def backprojection(self, sinogram):
         r"""Radon backward projection.
 
@@ -76,7 +90,8 @@ class BaseRadon(abc.ABC):
         sinogram = self._check_input(sinogram)
         self._move_parameters_to_device(sinogram.device)
 
-        return RadonBackprojection.apply(sinogram, self.angles, self.tex_cache, self.rays_cfg)
+        return RadonBackprojection.apply(sinogram, self.angles, self.tex_cache, self.vol_cfg, self.proj_cfg,
+                                         self.exec_cfg_generator)
 
     @normalize_shape(2)
     def filter_sinogram(self, sinogram, filter_name="ramp"):
@@ -166,22 +181,26 @@ class Radon(BaseRadon):
         if det_count <= 0:
             det_count = resolution
 
-        rays_cfg = RaysCfg(
-            # width, height, depth
-            resolution, resolution, 0,
-            # det_count, det_spacing, det_count_z, det_spacing_z
+        vol_cfg = VolumeCfg(
+            0, resolution, resolution,
+            0.0, 0.0, 0.0,
+            False
+        )
+
+        proj_cfg = ProjectionCfg(
+            # det_count_u, det_spacing_u, det_count_z, det_spacing_z
             det_count, det_spacing, 0, 0.0,
             # n_angles, clip_to_circle
             len(angles), clip_to_circle,
             # source and detector distances
             0.0, 0.0,
-            # projection type
-            0,
             # pitch, initial_z
-            0.0, 0.0
+            0.0, 0.0,
+            # projection type
+            0
         )
 
-        super().__init__(angles, rays_cfg)
+        super().__init__(angles, vol_cfg, proj_cfg, ExecCfgGeneratorBase())
 
         self.det_count = det_count
         self.det_spacing = det_spacing
@@ -224,24 +243,68 @@ class RadonFanbeam(BaseRadon):
         if det_spacing < 0:
             det_spacing = (source_distance + det_distance) / source_distance
 
-        # rays_cfg = RaysCfg(resolution, resolution, det_count, det_spacing, len(angles), clip_to_circle,
-        #                    source_distance, det_distance)
-        rays_cfg = RaysCfg(
-            # width, height, depth
-            resolution, resolution, 0,
-            # det_count, det_spacing, det_count_z, det_spacing_z
+        vol_cfg = VolumeCfg(
+            0, resolution, resolution,
+            0.0, 0.0, 0.0,
+            False
+        )
+
+        proj_cfg = ProjectionCfg(
+            # det_count_u, det_spacing_u, det_count_z, det_spacing_z
             det_count, det_spacing, 0, 0.0,
             # n_angles, clip_to_circle
             len(angles), clip_to_circle,
             # source and detector distances
             source_distance, det_distance,
-            # projection type
-            1,
             # pitch, initial_z
-            0.0, 0.0
+            0.0, 0.0,
+            # projection type
+            1
         )
 
-        super().__init__(angles, rays_cfg)
+        super().__init__(angles, vol_cfg, proj_cfg, ExecCfgGeneratorBase())
+
+        self.source_distance = source_distance
+        self.det_distance = det_distance
+        self.det_count = det_count
+        self.det_spacing = det_spacing
+
+
+class RadonConeFlat(BaseRadon):
+    def __init__(self, volume_shape, angles, source_distance: float, det_distance: float = -1, det_count: int = -1,
+                 det_spacing: float = -1):
+
+        resolution = max(volume_shape)
+
+        if det_count <= 0:
+            det_count = resolution
+
+        if det_distance < 0:
+            det_distance = source_distance
+            det_spacing = 2.0
+        if det_spacing < 0:
+            det_spacing = (source_distance + det_distance) / source_distance
+
+        vol_cfg = VolumeCfg(
+            volume_shape[0], volume_shape[1], volume_shape[2],
+            0.0, 0.0, 0.0,
+            True
+        )
+
+        proj_cfg = ProjectionCfg(
+            # det_count_u, det_spacing_u, det_count_z, det_spacing_z
+            det_count, det_spacing, det_count, det_spacing,
+            # n_angles, clip_to_circle
+            len(angles), False,
+            # source and detector distances
+            source_distance, det_distance,
+            # pitch, initial_z
+            0.0, 0.0,
+            # projection type
+            2
+        )
+
+        super().__init__(-angles, vol_cfg, proj_cfg, ExecCfgGeneratorBase())
 
         self.source_distance = source_distance
         self.det_distance = det_distance

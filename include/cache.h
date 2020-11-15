@@ -6,28 +6,6 @@
 
 using namespace std;
 
-class DeviceSizeKey {
-public:
-    int device;
-
-    int batch;
-    int width;
-    int height;
-    int depth;
-
-    int channels;
-    int precision;
-
-    DeviceSizeKey(int dv, int b, int w, int h, int d=0, int c=1, int p=1);
-
-    bool operator==(const DeviceSizeKey &o) const;
-
-    bool is_3d() const;
-    int z_size() const;
-};
-
-std::ostream &operator<<(std::ostream &os, DeviceSizeKey const &m);
-
 template<typename Key, typename Value>
 class Cache {
     Value **cache;

@@ -14,3 +14,5 @@ benchmarks/**/*.ipynb
 
 *.pyc
 test
+
+*.ncu-rep

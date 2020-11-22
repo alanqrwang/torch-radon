@@ -133,11 +133,11 @@ void radon_forward_cuda(
     if (proj_cfg.projection_type == FANBEAM) {
         if (channels == 1) {
             radon_forward_kernel<false, 1> << < grid_dim, exec_cfg.block_dim >> >
-                                                                     (y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                     ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
         } else {
             if (is_float) {
                 radon_forward_kernel<false, 4> << < grid_dim, exec_cfg.block_dim >> >
-                                                                         (y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                         ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
             } else {
                 radon_forward_kernel<false, 4> << < grid_dim, exec_cfg.block_dim >> >
                                                                          ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
@@ -146,11 +146,11 @@ void radon_forward_cuda(
     } else {
         if (channels == 1) {
             radon_forward_kernel<true, 1> << < grid_dim, exec_cfg.block_dim >> >
-                                                                    (y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                    ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
         } else {
             if (is_float) {
                 radon_forward_kernel<true, 4> << < grid_dim, exec_cfg.block_dim >> >
-                                                                        (y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                        ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
             } else {
                 radon_forward_kernel<true, 4> << < grid_dim, exec_cfg.block_dim >> >
                                                                         ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);

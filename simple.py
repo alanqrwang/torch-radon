@@ -2,32 +2,31 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from torch_radon import Radon
+from torch_radon import Radon, Projection
 
 device = torch.device('cuda')
 
 img = np.load("examples/phantom.npy")
+img = img[::2, ::2]
 # img = np.ones((16, 16), dtype=np.float32)
 image_size = img.shape[0]
+print(img.shape)
 n_angles = image_size
 
 # Instantiate Radon transform. clip_to_circle should be True when using filtered backprojection.
 angles = np.linspace(0, np.pi, n_angles, endpoint=False)
-radon = Radon(angles, image_size)
+projection = Projection.fanbeam(image_size, image_size, image_size)
+radon = Radon(angles, image_size, projection)
 
 with torch.no_grad():
     x = torch.FloatTensor(img).to(device).unsqueeze(0).repeat(8, 1, 1).to(device) #.half()
-    print(x.size())
 
     sinogram = radon.forward(x)
     # filtered_sinogram = radon.filter_sinogram(sinogram, "ram-lak")
-    torch.cuda.synchronize()
-    # print("\n\n")
-    # print(sinogram.size())
-    # bp = radon.backprojection(sinogram)
+    bp = radon.backprojection(sinogram)
 
-plt.imshow(sinogram[5].cpu().float().numpy())
-# # Show results
-# titles = ["Original Image", "Sinogram", "Backprojection"]
-# show_images([x, sinogram, bp], titles, keep_range=False)
-plt.show()
+# plt.imshow(sinogram[5].cpu().float().numpy())
+# # # Show results
+# # titles = ["Original Image", "Sinogram", "Backprojection"]
+# # show_images([x, sinogram, bp], titles, keep_range=False)
+# plt.show()

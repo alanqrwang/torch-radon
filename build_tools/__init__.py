@@ -53,6 +53,7 @@ def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/
 
     cu_template_files = mapper("src/*.template", "objs/cuda/*.o")
     cu_files = mapper("src/*.cu", "objs/cuda/*.o")
+    cu_to_ptx_files = mapper("src/*.cu", "objs/cuda/*.ptx")
     cpp_files = mapper("src/*.cpp", "objs/*.o")
     cpp_files = [x for x in cpp_files if x[0] != "src/pytorch.cpp"]
 
@@ -60,10 +61,11 @@ def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/
 
     include_flags = [f"-I{x}" for x in include_dirs]
     cxx_flags = ["-std=c++11 -fPIC -static"] + include_flags + ["-O3"]
-    nvcc_flags = ["-std=c++11", f"-ccbin={cxx}", "-Xcompiler", "-fPIC", "-Xcompiler -static",
-                  "-Xcompiler -D_GLIBCXX_USE_CXX11_ABI=0"] + include_flags + \
-                 [f"-gencode arch=compute_{x},code=sm_{x}" for x in compute_capabilites] + [
-                     "-DNDEBUG -O3 --generate-line-info --compiler-options -Wall"]
+    nvcc_base_flags = ["-std=c++11", f"-ccbin={cxx}", "-Xcompiler", "-fPIC", "-Xcompiler -static",
+                       "-Xcompiler -D_GLIBCXX_USE_CXX11_ABI=0"] + include_flags + [
+                          "-DNDEBUG -O3 --generate-line-info --compiler-options -Wall"]
+    nvcc_flags = nvcc_base_flags + [f"-gencode arch=compute_{x},code=sm_{x}" for x in compute_capabilites]
+    nvcc_ptx_flags = nvcc_base_flags + ["--ptx -g"]
 
     if verbose:
         cxx_flags.append("-DVERBOSE")
@@ -71,6 +73,7 @@ def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/
 
     cxx_flags = " ".join(cxx_flags)
     nvcc_flags = " ".join(nvcc_flags)
+    nvcc_ptx_flags = " ".join(nvcc_ptx_flags)
 
     # create output directory
     if not os.path.exists("objs/cuda"):
@@ -79,6 +82,7 @@ def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/
     # compile
     run_compilation(cu_template_files, lambda src, dst: f"{nvcc} {nvcc_flags} {render_template(src, dst)}")
     run_compilation(cu_files, lambda src, dst: f"{nvcc} {nvcc_flags} -c {src} -o {dst}")
+    run_compilation(cu_to_ptx_files, lambda src, dst: f"{nvcc} {nvcc_ptx_flags} -c {src} -o {dst}")
     run_compilation(cpp_files, lambda src, dst: f"{cxx} {cxx_flags} -c {src} -o {dst}")
 
     run(f"ar rc objs/libradon.a {' '.join(all_objects)}")

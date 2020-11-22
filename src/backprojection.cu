@@ -58,12 +58,21 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
                 }
             }
         } else {
+
             const float k = proj_cfg.s_dist + proj_cfg.d_dist;
 
             for (int i = 0; i < proj_cfg.n_angles; i++) {
-                float iden = __fdividef(k, (-s_cos[i] * dy + s_sin[i] * dx + proj_cfg.s_dist));
+                float iden = k * __fdividef(1.0f, (-s_cos[i] * dy + s_sin[i] * dx + proj_cfg.s_dist));
                 float j = (s_cos[i] * dx + s_sin[i] * dy) * ids * iden + cr;
 
+            /*
+             const float kk = __fdividef(1.0f, proj_cfg.s_dist + proj_cfg.d_dist);
+
+            for (int i = 0; i < proj_cfg.n_angles; i++) {
+                float den = kk * (-s_cos[i] * dy + s_sin[i] * dx + proj_cfg.s_dist);
+                float iden = __fdividef(1.0f, den);
+                float j = (s_cos[i] * dx + s_sin[i] * dy) * ids * iden + cr;
+            */
                 if (channels == 1) {
                     accumulator[0] += tex2DLayered<float>(texture, j, i + 0.5f, blockIdx.z) * iden;
                 } else {
@@ -109,11 +118,11 @@ void radon_backward_cuda(
     if (proj_cfg.projection_type == FANBEAM) {
         if (channels == 1) {
             radon_backward_kernel<false, 1> << < grid_dim, block_dim >> >
-                                                                      (y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                      ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
         } else {
             if (is_float) {
                 radon_backward_kernel<false, 4> << < grid_dim, block_dim >> >
-                                                                          (y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                          ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
             } else {
                 radon_backward_kernel<false, 4> << < grid_dim, block_dim >> >
                                                                           ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
@@ -122,11 +131,11 @@ void radon_backward_cuda(
     } else {
         if (channels == 1) {
             radon_backward_kernel<true, 1> << < grid_dim, block_dim >> >
-                                                                     (y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                     ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
         } else {
             if (is_float) {
                 radon_backward_kernel<true, 4> << < grid_dim, block_dim >> >
-                                                                         (y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                         ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
             } else {
                 radon_backward_kernel<true, 4> << < grid_dim, block_dim >> >
                                                                          ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);

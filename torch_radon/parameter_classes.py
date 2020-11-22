@@ -46,7 +46,7 @@ class Volume:
 
 
 class Projection:
-    PARALLEL_BEAM = 0
+    PARALLEL = 0
     FANBEAM = 1
     CONE_FLAT = 2
 
@@ -56,3 +56,16 @@ class Projection:
     @staticmethod
     def parallel_beam(det_count, det_spacing=1.0):
         return Projection(ProjectionCfg(det_count, det_spacing))
+
+    @staticmethod
+    def fanbeam(src_dist, det_dist, det_count, det_spacing=1.0):
+        return Projection(ProjectionCfg(
+            det_count, det_spacing,
+            0, 1.0,
+            src_dist, det_dist,
+            0.0, 0.0,
+            Projection.FANBEAM
+        ))
+
+    def is_2d(self):
+        return self.cfg.is_2d()

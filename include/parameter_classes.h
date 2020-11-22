@@ -33,7 +33,6 @@ public:
     float det_spacing_v;
 
     int n_angles;
-    bool clip_to_circle;
 
     // source and detector distances (for fanbeam and coneflat)
     float s_dist = 0.0;
@@ -48,7 +47,11 @@ public:
     ProjectionCfg(int dc_u, float ds_u, int dc_v=0, float ds_v=1.0f, float sd=0.0f, float dd=0.0f,
                   float pi=0.0f, float iz=0.0f, int pt=0);
 
-    std::string to_string() const;
+    ProjectionCfg(const ProjectionCfg& src);
+
+    bool is_2d() const;
+
+    ProjectionCfg copy() const;
 
 //    __device__ __inline__ float det_pixel_pos_u(int p) const {
 //        //get the position of the detector pixel p on the u axis

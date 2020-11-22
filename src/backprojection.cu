@@ -7,7 +7,7 @@
 #include "texture.h"
 #include "backprojection.h"
 
-template<bool parallel_beam, int channels, bool clip_to_circle, typename T>
+template<bool parallel_beam, int channels, typename T>
 __global__ void
 radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const float *__restrict__ angles,
                       const VolumeCfg vol_cfg, const ProjectionCfg proj_cfg) {
@@ -43,14 +43,6 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
 #pragma unroll
         for (int i = 0; i < channels; i++) accumulator[i] = 0.0f;
 
-        if (clip_to_circle) {
-            const float radius = proj_cfg.det_count_u * proj_cfg.det_spacing_u * 0.5f;
-            const float r = hypot(dx, dy);
-            if (r > radius) {
-                goto out;
-            }
-        }
-
         if (parallel_beam) {
             for (int i = 0; i < proj_cfg.n_angles; i++) {
                 float j = (s_cos[i] * dx + s_sin[i] * dy) * ids + cr;
@@ -85,7 +77,6 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
             }
         }
 
-        out:
 #pragma unroll
         for (int b = 0; b < channels; b++) {
             output[base + b * pitch] = accumulator[b] * ids;
@@ -117,58 +108,28 @@ void radon_backward_cuda(
     // Invoke kernel
     if (proj_cfg.projection_type == FANBEAM) {
         if (channels == 1) {
-            if (proj_cfg.clip_to_circle) {
-                radon_backward_kernel<false, 1, true> << < grid_dim, block_dim >> >
-                                                                     (y, tex->texture, angles, vol_cfg, proj_cfg);
-            } else {
-                radon_backward_kernel<false, 1, false> << < grid_dim, block_dim >> >
+            radon_backward_kernel<false, 1> << < grid_dim, block_dim >> >
                                                                       (y, tex->texture, angles, vol_cfg, proj_cfg);
-            }
         } else {
             if (is_float) {
-                if (proj_cfg.clip_to_circle) {
-                    radon_backward_kernel<false, 4, true> << < grid_dim, block_dim >> >
-                                                                         (y, tex->texture, angles, vol_cfg, proj_cfg);
-                } else {
-                    radon_backward_kernel<false, 4, false> << < grid_dim, block_dim >> >
+                radon_backward_kernel<false, 4> << < grid_dim, block_dim >> >
                                                                           (y, tex->texture, angles, vol_cfg, proj_cfg);
-                }
             } else {
-                if (proj_cfg.clip_to_circle) {
-                    radon_backward_kernel<false, 4, true> << < grid_dim, block_dim >> >
-                                                                         ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
-                } else {
-                    radon_backward_kernel<false, 4, false> << < grid_dim, block_dim >> >
+                radon_backward_kernel<false, 4> << < grid_dim, block_dim >> >
                                                                           ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
-                }
             }
         }
     } else {
         if (channels == 1) {
-            if (proj_cfg.clip_to_circle) {
-                radon_backward_kernel<true, 1, true> << < grid_dim, block_dim >> >
-                                                                    (y, tex->texture, angles, vol_cfg, proj_cfg);
-            } else {
-                radon_backward_kernel<true, 1, false> << < grid_dim, block_dim >> >
+            radon_backward_kernel<true, 1> << < grid_dim, block_dim >> >
                                                                      (y, tex->texture, angles, vol_cfg, proj_cfg);
-            }
         } else {
             if (is_float) {
-                if (proj_cfg.clip_to_circle) {
-                    radon_backward_kernel<true, 4, true> << < grid_dim, block_dim >> >
-                                                                        (y, tex->texture, angles, vol_cfg, proj_cfg);
-                } else {
-                    radon_backward_kernel<true, 4, false> << < grid_dim, block_dim >> >
+                radon_backward_kernel<true, 4> << < grid_dim, block_dim >> >
                                                                          (y, tex->texture, angles, vol_cfg, proj_cfg);
-                }
             } else {
-                if (proj_cfg.clip_to_circle) {
-                    radon_backward_kernel<true, 4, true> << < grid_dim, block_dim >> >
-                                                                        ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
-                } else {
-                    radon_backward_kernel<true, 4, false> << < grid_dim, block_dim >> >
+                radon_backward_kernel<true, 4> << < grid_dim, block_dim >> >
                                                                          ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
-                }
             }
         }
     }

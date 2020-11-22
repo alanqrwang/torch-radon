@@ -8,7 +8,7 @@
 #include "parameter_classes.h"
 
 
-template<bool parallel_beam, int channels, bool clip_to_circle, typename T>
+template<bool parallel_beam, int channels, typename T>
 __global__ void
 radon_forward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const float *__restrict__ angles,
                      const VolumeCfg vol_cfg, const ProjectionCfg proj_cfg) {
@@ -56,43 +56,26 @@ radon_forward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const 
 ////            printf("O %f %f -> %f %f\n", rsx, rsy, rdx, rdy);
 //        }
 
-        if (clip_to_circle) {
-            // clip rays to circle (to reduce memory reads)
-            // clip rays only to the part of the volume which is visible at every angle
-            const float radius = proj_cfg.det_count_u * proj_cfg.det_spacing_u * 0.5f;
-            const float a = rdx * rdx + rdy * rdy;
-            const float b = rsx * rdx + rsy * rdy;
-            const float c = rsx * rsx + rsy * rsy - radius * radius;
 
-            // min_clip to 1 to avoid getting empty rays
-            const float delta_sqrt = sqrtf(max(b * b - a * c, 1.0f));
-            const float alpha_s = (-b - delta_sqrt) / a;
-            const float alpha_e = (-b + delta_sqrt) / a;
+        // clip to volume (to reduce memory reads)
+        constexpr float pad = 0.5f;
+        const float alpha_x_m = (vol_cfg.dx - 0.5f * vol_cfg.width - pad - rsx) / rdx;
+        const float alpha_x_p = (vol_cfg.dx + 0.5f * vol_cfg.width + pad - rsx) / rdx;
+        const float alpha_y_m = (vol_cfg.dy - 0.5f * vol_cfg.height - pad - rsy) / rdy;
+        const float alpha_y_p = (vol_cfg.dy + 0.5f * vol_cfg.height + pad - rsy) / rdy;
+        const float alpha_s = max(min(alpha_x_p, alpha_x_m), min(alpha_y_p, alpha_y_m));
+        const float alpha_e = min(max(alpha_x_p, alpha_x_m), max(alpha_y_p, alpha_y_m));
 
-            rsx += rdx * alpha_s + vol_cfg.width * 0.5f;
-            rsy += rdy * alpha_s + vol_cfg.height * 0.5f;
-            rdx *= (alpha_e - alpha_s);
-            rdy *= (alpha_e - alpha_s);
-        } else {
-            // clip to volume (to reduce memory reads)
-            const float alpha_x_m = (vol_cfg.dx - 0.5f * vol_cfg.width - rsx) / rdx;
-            const float alpha_x_p = (vol_cfg.dx + 0.5f * vol_cfg.width - rsx) / rdx;
-            const float alpha_y_m = (vol_cfg.dy - 0.5f * vol_cfg.height - rsy) / rdy;
-            const float alpha_y_p = (vol_cfg.dy + 0.5f * vol_cfg.height - rsy) / rdy;
-            const float alpha_s = max(min(alpha_x_p, alpha_x_m), min(alpha_y_p, alpha_y_m));
-            const float alpha_e = min(max(alpha_x_p, alpha_x_m), max(alpha_y_p, alpha_y_m));
-
-            if (alpha_s > alpha_e) {
+        if (alpha_s > alpha_e) {
 #pragma unroll
-                for (int b = 0; b < channels; b++) output[base + b * pitch] = 0.0f;
-                return;
-            }
-
-            rsx += rdx * alpha_s + vol_cfg.width * 0.5f;
-            rsy += rdy * alpha_s + vol_cfg.height * 0.5f;
-            rdx *= (alpha_e - alpha_s);
-            rdy *= (alpha_e - alpha_s);
+            for (int b = 0; b < channels; b++) output[base + b * pitch] = 0.0f;
+            return;
         }
+
+        rsx += rdx * alpha_s + vol_cfg.width * 0.5f;
+        rsy += rdy * alpha_s + vol_cfg.height * 0.5f;
+        rdx *= (alpha_e - alpha_s);
+        rdy *= (alpha_e - alpha_s);
 
 //        const uint n_steps = __float2uint_ru(hypot(rdx, rdy));
         const uint n_steps = __float2uint_ru(max(abs(rdx), abs(rdy)));
@@ -149,58 +132,28 @@ void radon_forward_cuda(
 
     if (proj_cfg.projection_type == FANBEAM) {
         if (channels == 1) {
-            if (proj_cfg.clip_to_circle) {
-                radon_forward_kernel<false, 1, true> << < grid_dim, exec_cfg.block_dim >> >
-                                                                    (y, tex->texture, angles, vol_cfg, proj_cfg);
-            } else {
-                radon_forward_kernel<false, 1, false> << < grid_dim, exec_cfg.block_dim >> >
+            radon_forward_kernel<false, 1> << < grid_dim, exec_cfg.block_dim >> >
                                                                      (y, tex->texture, angles, vol_cfg, proj_cfg);
-            }
         } else {
             if (is_float) {
-                if (proj_cfg.clip_to_circle) {
-                    radon_forward_kernel<false, 4, true> << < grid_dim, exec_cfg.block_dim >> >
-                                                                        (y, tex->texture, angles, vol_cfg, proj_cfg);
-                } else {
-                    radon_forward_kernel<false, 4, false> << < grid_dim, exec_cfg.block_dim >> >
+                radon_forward_kernel<false, 4> << < grid_dim, exec_cfg.block_dim >> >
                                                                          (y, tex->texture, angles, vol_cfg, proj_cfg);
-                }
             } else {
-                if (proj_cfg.clip_to_circle) {
-                    radon_forward_kernel<false, 4, true> << < grid_dim, exec_cfg.block_dim >> >
-                                                                        ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
-                } else {
-                    radon_forward_kernel<false, 4, false> << < grid_dim, exec_cfg.block_dim >> >
+                radon_forward_kernel<false, 4> << < grid_dim, exec_cfg.block_dim >> >
                                                                          ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
-                }
             }
         }
     } else {
         if (channels == 1) {
-            if (proj_cfg.clip_to_circle) {
-                radon_forward_kernel<true, 1, true> << < grid_dim, exec_cfg.block_dim >> >
-                                                                   (y, tex->texture, angles, vol_cfg, proj_cfg);
-            } else {
-                radon_forward_kernel<true, 1, false> << < grid_dim, exec_cfg.block_dim >> >
+            radon_forward_kernel<true, 1> << < grid_dim, exec_cfg.block_dim >> >
                                                                     (y, tex->texture, angles, vol_cfg, proj_cfg);
-            }
         } else {
             if (is_float) {
-                if (proj_cfg.clip_to_circle) {
-                    radon_forward_kernel<true, 4, true> << < grid_dim, exec_cfg.block_dim >> >
-                                                                       (y, tex->texture, angles, vol_cfg, proj_cfg);
-                } else {
-                    radon_forward_kernel<true, 4, false> << < grid_dim, exec_cfg.block_dim >> >
+                radon_forward_kernel<true, 4> << < grid_dim, exec_cfg.block_dim >> >
                                                                         (y, tex->texture, angles, vol_cfg, proj_cfg);
-                }
             } else {
-                if (proj_cfg.clip_to_circle) {
-                    radon_forward_kernel<true, 4, true> << < grid_dim, exec_cfg.block_dim >> >
-                                                                       ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
-                } else {
-                    radon_forward_kernel<true, 4, false> << < grid_dim, exec_cfg.block_dim >> >
+                radon_forward_kernel<true, 4> << < grid_dim, exec_cfg.block_dim >> >
                                                                         ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
-                }
             }
         }
     }

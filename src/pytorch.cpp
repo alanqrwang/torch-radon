@@ -22,13 +22,14 @@ torch::Tensor radon_forward(torch::Tensor x, torch::Tensor angles, TextureCache 
     auto dtype = x.dtype();
 
     const int batch_size = x.size(0);
+    const int n_angles = angles.size(0);
     const int device = x.device().index();
 
     // allocate output sinogram tensor
     auto options = torch::TensorOptions().dtype(dtype).device(x.device());
 
     if(vol_cfg.is_3d){
-        auto y = torch::empty({batch_size, proj_cfg.n_angles, proj_cfg.det_count_v, proj_cfg.det_count_u}, options);
+        auto y = torch::empty({batch_size, n_angles, proj_cfg.det_count_v, proj_cfg.det_count_u}, options);
 
          if (dtype == torch::kFloat16) {
             radon_forward_cuda_3d((unsigned short *) x.data_ptr<at::Half>(), angles.data_ptr<float>(),
@@ -40,7 +41,7 @@ torch::Tensor radon_forward(torch::Tensor x, torch::Tensor angles, TextureCache 
         }
         return y;
     }else{
-        auto y = torch::empty({batch_size, proj_cfg.n_angles, proj_cfg.det_count_u}, options);
+        auto y = torch::empty({batch_size, n_angles, proj_cfg.det_count_u}, options);
 
         if (dtype == torch::kFloat16) {
             radon_forward_cuda((unsigned short *) x.data_ptr<at::Half>(), angles.data_ptr<float>(),
@@ -283,8 +284,18 @@ py::class_<VolumeCfg>(m,"VolumeCfg")
 py::class_<ProjectionCfg>(m,"ProjectionCfg")
     .def(py::init<int, float>())
     .def(py::init<int, float, int, float, float, float, float, float, int>())
-    .def("__repr__", &ProjectionCfg::to_string)
-    .def_readonly("projection_type", &ProjectionCfg::projection_type);
+    .def("is_2d", &ProjectionCfg::is_2d)
+    .def("copy", &ProjectionCfg::copy)
+    .def_readonly("projection_type", &ProjectionCfg::projection_type)
+    .def_readwrite("det_count_u", &ProjectionCfg::det_count_u)
+    .def_readwrite("det_spacing_u", &ProjectionCfg::det_spacing_u)
+    .def_readwrite("det_count_v", &ProjectionCfg::det_count_v)
+    .def_readwrite("det_spacing_v", &ProjectionCfg::det_spacing_v)
+    .def_readwrite("s_dist", &ProjectionCfg::s_dist)
+    .def_readwrite("d_dist", &ProjectionCfg::d_dist)
+    .def_readwrite("pitch", &ProjectionCfg::pitch)
+    .def_readwrite("initial_z", &ProjectionCfg::initial_z)
+    .def_readwrite("n_angles", &ProjectionCfg::n_angles);
 
 py::class_<ExecCfg>(m,"ExecCfg")
     .def(py::init<int, int, int, int>());

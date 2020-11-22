@@ -13,7 +13,7 @@ except Exception as e:
 from .differentiable_functions import RadonForward, RadonBackprojection
 from .utils import normalize_shape, ShapeNormalizer
 from .filtering import FourierFilters
-from .parameter_classes import Volume, Projection
+from .parameter_classes import Volume, Projection, ExecCfg
 
 __version__ = "1.0.0"
 
@@ -58,8 +58,8 @@ class Radon:
         self.tex_cache = torch_radon_cuda.TextureCache(8)
         self.fourier_filters = FourierFilters()
 
-        seed = np.random.get_state()[1][0]
-        self.noise_generator = torch_radon_cuda.RadonNoiseGenerator(seed)
+        # seed = np.random.get_state()[1][0]
+        # self.noise_generator = torch_radon_cuda.RadonNoiseGenerator(seed)
 
     def _move_parameters_to_device(self, device):
         if device != self.angles.device:
@@ -75,34 +75,46 @@ class Radon:
 
         return x
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, angles: torch.Tensor = None):
         r"""Radon forward projection.
 
         :param x: PyTorch GPU tensor.
+        :param angles: PyTorch GPU tensor indicating the measuring angles, if None the angles given to the constructor
+        are used
         :returns: PyTorch GPU tensor containing sinograms.
         """
         x = self._check_input(x)
         self._move_parameters_to_device(x.device)
 
+        angles = angles if angles is not None else self.angles
+
         shape_normalizer = ShapeNormalizer(self.volume.num_dimensions())
         x = shape_normalizer.normalize(x)
+
+        self.projection.cfg.n_angles = len(angles)
 
         y = RadonForward.apply(x, self.angles, self.tex_cache, self.volume.cfg, self.projection.cfg,
                                self.exec_cfg_generator)
 
         return shape_normalizer.unnormalize(y)
 
-    def backprojection(self, sinogram):
+    def backprojection(self, sinogram, angles: torch.Tensor = None):
         r"""Radon backward projection.
 
         :param sinogram: PyTorch GPU tensor containing sinograms.
+        :param angles: PyTorch GPU tensor indicating the measuring angles, if None the angles given to the constructor
+        are used
         :returns: PyTorch GPU tensor containing backprojected volume.
         """
         sinogram = self._check_input(sinogram)
         self._move_parameters_to_device(sinogram.device)
 
+        angles = angles if angles is not None else self.angles
+
         shape_normalizer = ShapeNormalizer(self.volume.num_dimensions())
         sinogram = shape_normalizer.normalize(sinogram)
+
+        self.projection.cfg.n_angles = len(angles)
 
         y = RadonBackprojection.apply(sinogram, self.angles, self.tex_cache, self.volume.cfg, self.projection.cfg,
                                       self.exec_cfg_generator)
@@ -117,14 +129,14 @@ class Radon:
         """
         return self.backprojection(sinogram)
 
-    def set_seed(self, seed=-1):
-        if seed < 0:
-            seed = np.random.get_state()[1][0]
-
-        self.noise_generator.set_seed(seed)
-
-    def __del__(self):
-        self.noise_generator.free()
+    # def set_seed(self, seed=-1):
+    #     if seed < 0:
+    #         seed = np.random.get_state()[1][0]
+    #
+    #     self.noise_generator.set_seed(seed)
+    #
+    # def __del__(self):
+    #     self.noise_generator.free()
 
 
 class BaseRadon(abc.ABC):
@@ -212,57 +224,6 @@ class BaseRadon(abc.ABC):
     @normalize_shape(2)
     def readings_lookup(self, sensor_readings, lookup_table):
         return torch_radon_cuda.readings_lookup(sensor_readings, lookup_table)
-
-
-class Radon(BaseRadon):
-    r"""
-    |
-    .. image:: https://raw.githubusercontent.com/matteo-ronchetti/torch-radon/
-            master/pictures/parallelbeam.svg?sanitize=true
-        :align: center
-        :width: 400px
-    |
-
-    Class that implements Radon projection for the Parallel Beam geometry.
-
-    :param resolution: The resolution of the input images.
-    :param angles: Array containing the list of measuring angles. Can be a Numpy array or a PyTorch tensor.
-    :param det_count: Number of rays that will be projected. By default it is = :attr:`resolution`
-    :param det_spacing: Distance between two contiguous rays.
-    :param clip_to_circle: If True both forward and backward projection will be restricted to pixels inside the circle
-        (highlighted in cyan).
-
-    .. note::
-        Currently only support resolutions which are multiples of 16.
-    """
-
-    def __init__(self, resolution: int, angles, det_count=-1, det_spacing=1.0, clip_to_circle=False):
-        if det_count <= 0:
-            det_count = resolution
-
-        vol_cfg = VolumeCfg(
-            0, resolution, resolution,
-            0.0, 0.0, 0.0,
-            False
-        )
-
-        proj_cfg = ProjectionCfg(
-            # det_count_u, det_spacing_u, det_count_z, det_spacing_z
-            det_count, det_spacing, 0, 0.0,
-            # n_angles, clip_to_circle
-            len(angles), clip_to_circle,
-            # source and detector distances
-            0.0, 0.0,
-            # pitch, initial_z
-            0.0, 0.0,
-            # projection type
-            0
-        )
-
-        super().__init__(angles, vol_cfg, proj_cfg, ExecCfgGeneratorBase())
-
-        self.det_count = det_count
-        self.det_spacing = det_spacing
 
 
 class RadonFanbeam(BaseRadon):

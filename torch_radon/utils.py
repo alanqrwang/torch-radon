@@ -26,7 +26,7 @@ class ShapeNormalizer:
         return x
 
     def unnormalize(self, y):
-        if old_shape is None:
+        if self.old_shape is None:
             raise Exception("Calling `unnormalize` before `normalize` ")
 
         return _unnormalize_shape(y, self.old_shape)

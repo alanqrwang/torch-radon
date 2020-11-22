@@ -10,15 +10,28 @@ ProjectionCfg::ProjectionCfg(int dc_u, float ds_u, int dc_v, float ds_v, float s
               det_spacing_v(ds_v), s_dist(sd), d_dist(dd), pitch(pi), initial_z(iz),
               projection_type(pt) {}
 
+ProjectionCfg::ProjectionCfg(const ProjectionCfg& src)
+    :det_count_u(src.det_count_u), det_spacing_u(src.det_spacing_u),
+    det_count_v(src.det_count_v), det_spacing_v(src.det_spacing_v),
+    s_dist(src.s_dist), d_dist(src.d_dist), pitch(src.pitch), initial_z(src.initial_z),
+              projection_type(src.projection_type), n_angles(src.n_angles) {}
 
-std::string ProjectionCfg::to_string() const{
-    switch(projection_type){
-        case PARALLEL:
-            return string_format("Projection(type=ParallelBeam, det_count=%d, det_spacing=%f)", det_count_u, det_spacing_u);
-        default:
-            return "TODO";
-    }
+bool ProjectionCfg::is_2d() const{
+    return projection_type == PARALLEL || projection_type == FANBEAM;
 }
+
+ProjectionCfg ProjectionCfg::copy() const{
+    return ProjectionCfg(*this);
+}
+
+//std::string ProjectionCfg::to_string() const{
+//    switch(projection_type){
+//        case PARALLEL:
+//            return string_format("Projection(type=ParallelBeam, det_count=%d, det_spacing=%f)", det_count_u, det_spacing_u);
+//        default:
+//            return "TODO";
+//    }
+//}
 
 
 ExecCfg::ExecCfg(int x, int y, int z, int ch)

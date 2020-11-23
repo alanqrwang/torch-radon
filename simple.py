@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from torch_radon import Radon, Projection
+from torch_radon import Radon, Projection, ExecCfg
 
 device = torch.device('cuda')
 
@@ -19,11 +19,14 @@ projection = Projection.fanbeam(image_size, image_size, image_size)
 radon = Radon(angles, image_size, projection)
 
 with torch.no_grad():
-    x = torch.FloatTensor(img).to(device).unsqueeze(0).repeat(8, 1, 1).to(device) #.half()
+    x = torch.FloatTensor(img).to(device).unsqueeze(0).repeat(32, 1, 1).to(device) #.half()
 
     sinogram = radon.forward(x)
     # filtered_sinogram = radon.filter_sinogram(sinogram, "ram-lak")
-    bp = radon.backprojection(sinogram)
+    # bp = radon.backprojection(sinogram)
+    # bp = radon.backprojection(sinogram, exec_cfg=ExecCfg(32, 8, 1, 4))
+    bp = radon.backprojection(sinogram, exec_cfg=ExecCfg(32, 16, 1, 4))
+    # bp = radon.backprojection(sinogram, exec_cfg=ExecCfg(32, 32, 1, 4))
 
 # plt.imshow(sinogram[5].cpu().float().numpy())
 # # # Show results

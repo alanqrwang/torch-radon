@@ -87,7 +87,7 @@ radon_forward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const 
 //            printf("C %f %f -> %f %f  %d\n", rsx, rsy, rdx, rdy, n_steps);
 //        }
 
-        for (uint j = 0; j <= n_steps; j++) { //changing j and n_steps to int makes everything way slower (WHY???)
+        for (uint j = 0; j <= n_steps; j++) { //changing j and n_steps to int make nvcc use unrolling
             if (channels == 1) {
                 accumulator[0] += tex2DLayered<float>(texture, rsx, rsy, blockIdx.z);
             } else {

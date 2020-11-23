@@ -47,13 +47,14 @@ def render_template(src, dst):
 
 # 80, 86 are only for CUDA 11
 # TODO add 80, 86 if CUDA 11
-def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/cuda", cxx="g++"):
+def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/cuda", cxx="g++",
+          keep_intermediate=True):
     nvcc = f"{cuda_home}/bin/nvcc"
     include_dirs = ["./include"]
+    intermediate_dir = "intermediates"
 
     cu_template_files = mapper("src/*.template", "objs/cuda/*.o")
     cu_files = mapper("src/*.cu", "objs/cuda/*.o")
-    cu_to_ptx_files = mapper("src/*.cu", "objs/cuda/*.ptx")
     cpp_files = mapper("src/*.cpp", "objs/*.o")
     cpp_files = [x for x in cpp_files if x[0] != "src/pytorch.cpp"]
 
@@ -65,15 +66,18 @@ def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/
                        "-Xcompiler -D_GLIBCXX_USE_CXX11_ABI=0"] + include_flags + [
                           "-DNDEBUG -O3 --generate-line-info --compiler-options -Wall"]
     nvcc_flags = nvcc_base_flags + [f"-gencode arch=compute_{x},code=sm_{x}" for x in compute_capabilites]
-    nvcc_ptx_flags = nvcc_base_flags + ["--ptx"]
 
     if verbose:
         cxx_flags.append("-DVERBOSE")
         nvcc_flags.append("-DVERBOSE")
 
+    if keep_intermediate:
+        if not os.path.exists(intermediate_dir):
+            os.mkdir(intermediate_dir)
+        nvcc_flags.append(f"-keep --keep-dir {intermediate_dir}")
+
     cxx_flags = " ".join(cxx_flags)
     nvcc_flags = " ".join(nvcc_flags)
-    nvcc_ptx_flags = " ".join(nvcc_ptx_flags)
 
     # create output directory
     if not os.path.exists("objs/cuda"):
@@ -82,10 +86,16 @@ def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/
     # compile
     run_compilation(cu_template_files, lambda src, dst: f"{nvcc} {nvcc_flags} {render_template(src, dst)}")
     run_compilation(cu_files, lambda src, dst: f"{nvcc} {nvcc_flags} -c {src} -o {dst}")
-    run_compilation(cu_to_ptx_files, lambda src, dst: f"{nvcc} {nvcc_ptx_flags} -c {src} -o {dst}")
     run_compilation(cpp_files, lambda src, dst: f"{cxx} {cxx_flags} -c {src} -o {dst}")
 
     run(f"ar rc objs/libradon.a {' '.join(all_objects)}")
+
+    if keep_intermediate:
+        for path in os.listdir(intermediate_dir):
+            if path.endswith(".ptx"):
+                pass
+            else:
+                os.remove(os.path.join(intermediate_dir, path))
 
 
 def clean():

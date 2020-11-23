@@ -75,7 +75,7 @@ class Radon:
 
         return x
 
-    def forward(self, x: torch.Tensor, angles: torch.Tensor = None):
+    def forward(self, x: torch.Tensor, angles: torch.Tensor = None, exec_cfg: ExecCfg = None):
         r"""Radon forward projection.
 
         :param x: PyTorch GPU tensor.
@@ -94,11 +94,11 @@ class Radon:
         self.projection.cfg.n_angles = len(angles)
 
         y = RadonForward.apply(x, self.angles, self.tex_cache, self.volume.cfg, self.projection.cfg,
-                               self.exec_cfg_generator)
+                               self.exec_cfg_generator, exec_cfg)
 
         return shape_normalizer.unnormalize(y)
 
-    def backprojection(self, sinogram, angles: torch.Tensor = None):
+    def backprojection(self, sinogram, angles: torch.Tensor = None, exec_cfg: ExecCfg = None):
         r"""Radon backward projection.
 
         :param sinogram: PyTorch GPU tensor containing sinograms.
@@ -117,7 +117,7 @@ class Radon:
         self.projection.cfg.n_angles = len(angles)
 
         y = RadonBackprojection.apply(sinogram, self.angles, self.tex_cache, self.volume.cfg, self.projection.cfg,
-                                      self.exec_cfg_generator)
+                                      self.exec_cfg_generator, exec_cfg)
 
         return shape_normalizer.unnormalize(y)
 

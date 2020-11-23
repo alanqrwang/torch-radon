@@ -122,13 +122,9 @@ Texture::Texture(TextureConfig c) :cfg(c) {
     cudaChannelFormatDesc channelDesc = get_channel_desc(cfg.channels, cfg.precision);
     auto allocation_type = cfg.is_layered ? cudaArrayLayered : cudaArrayDefault;
 
-    if(cfg.height > 0){
-        const cudaExtent extent = make_cudaExtent(cfg.width, cfg.height, cfg.depth);
-        std::cout << cfg.width << " " << cfg.height << " " << cfg.depth << " " << cfg.is_layered << std::endl;
-        checkCudaErrors(cudaMalloc3DArray(&array, &channelDesc, extent, allocation_type));       
-    }else{
-        checkCudaErrors(cudaMallocArray(&array, &channelDesc, cfg.width, cfg.depth, allocation_type));
-    }
+    const cudaExtent extent = make_cudaExtent(cfg.width, cfg.height, cfg.depth);
+    std::cout << cfg.width << " " << cfg.height << " " << cfg.depth << " " << cfg.is_layered << std::endl;
+    checkCudaErrors(cudaMalloc3DArray(&array, &channelDesc, extent, allocation_type));       
     // const cudaExtent extent = make_cudaExtent(cfg.width, cfg.height, cfg.depth);
     // std::cout << cfg.width << " " << cfg.height << " " << cfg.depth << " " << cfg.is_layered << std::endl;
     

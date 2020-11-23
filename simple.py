@@ -23,13 +23,13 @@ with torch.no_grad():
 
     sinogram = radon.forward(x)
     # filtered_sinogram = radon.filter_sinogram(sinogram, "ram-lak")
-    # bp = radon.backprojection(sinogram)
+    bp = radon.backprojection(sinogram)
     # bp = radon.backprojection(sinogram, exec_cfg=ExecCfg(32, 8, 1, 4))
-    bp = radon.backprojection(sinogram, exec_cfg=ExecCfg(32, 16, 1, 4))
+    # bp = radon.backprojection(sinogram, exec_cfg=ExecCfg(32, 16, 1, 4))
     # bp = radon.backprojection(sinogram, exec_cfg=ExecCfg(32, 32, 1, 4))
 
-# plt.imshow(sinogram[5].cpu().float().numpy())
+plt.imshow(bp[5].cpu().float().numpy())
 # # # Show results
-# # titles = ["Original Image", "Sinogram", "Backprojection"]
-# # show_images([x, sinogram, bp], titles, keep_range=False)
-# plt.show()
+# titles = ["Original Image", "Sinogram", "Backprojection"]
+# show_images([x, sinogram, bp], titles, keep_range=False)
+plt.show()

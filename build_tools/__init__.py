@@ -65,7 +65,7 @@ def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/
                        "-Xcompiler -D_GLIBCXX_USE_CXX11_ABI=0"] + include_flags + [
                           "-DNDEBUG -O3 --generate-line-info --compiler-options -Wall"]
     nvcc_flags = nvcc_base_flags + [f"-gencode arch=compute_{x},code=sm_{x}" for x in compute_capabilites]
-    nvcc_ptx_flags = nvcc_base_flags + ["--ptx -g"]
+    nvcc_ptx_flags = nvcc_base_flags + ["--ptx"]
 
     if verbose:
         cxx_flags.append("-DVERBOSE")

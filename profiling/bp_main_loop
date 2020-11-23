@@ -1,0 +1,148 @@
+BEFORE
+%r96 = i
+// Shift bits left, zero-fill on right.
+// %r97 = %r96 << 2
+// %r97 = %r96 * 4 (4 = sizeof(float))
+shl.b32 	%r97, %r96, 2;
+
+%f1 =
+%f3 = dx
+%f4 = dy
+%f5 = ids
+%f34 = 1.0f
+
+THIS IS THE MAIN LOOP
+// %r97 is the "index" for accessing sin[] and cos[]
+
+// loading %f116 = cos[i]
+    // get address of variable "cos"
+    mov.u32 	%r80, _ZZ21radon_backward_kernelILb0ELi1EfEvPT1_yPKf9VolumeCfg13ProjectionCfgE5s_cos;
+    // add %r81 = %r80 + %r97
+    // %r81 = "cos" + %r97
+    add.s32 	%r81, %r80, %r97;
+    // source file location (.loc file_index line_number column_position)
+    .loc 1 65 28
+    ld.shared.f32 	%f116, [%r81];
+
+// %f117 = cos[i] * dy
+mul.f32 	%f117, %f4, %f116;
+
+// loading %f118 = sin[i]
+    mov.u32 	%r82, _ZZ21radon_backward_kernelILb0ELi1EfEvPT1_yPKf9VolumeCfg13ProjectionCfgE5s_sin;
+    add.s32 	%r83, %r82, %r97;
+    .loc 1 65 28
+    ld.shared.f32 	%f118, [%r83];
+
+// compute iden and j (%f124 = iden  %f128 = j)
+    // %f119 = sin[i] * dx
+    mul.f32 	%f119, %f3, %f118;
+
+    // %f120 = %f119 - %f117 = (sin[i] * dx) - (cos[i] * dy)
+    sub.f32 	%f120, %f119, %f117;
+
+    // %f121 = (sin[i] * dx) - (cos[i] * dy) + proj_cfg.s_dist
+    add.f32 	%f121, %f1, %f120;
+
+    // %f123 = 1.0f / ((sin[i] * dx) - (cos[i] * dy) + proj_cfg.s_dist)
+    div.approx.f32 	%f123, %f34, %f121;
+
+    // multiply by k
+    // %f124 = iden
+    mul.f32 	%f124, %f6, %f123;
+
+    // sin[i] * dy
+    mul.f32 	%f125, %f4, %f118;
+    // (cos[i] * dx) + (sin[i] * dy)
+    fma.rn.f32 	%f126, %f3, %f116, %f125;
+    // * ids
+    mul.f32 	%f127, %f5, %f126;
+    // * iden + cr
+    fma.rn.f32 	%f128, %f124, %f127, %f2;
+
+
+// accumulator[0] += tex2DLayered<float>(texture, j, i + 0.5f, blockIdx.z) * iden;
+.loc 1 77 21
+// float(i)
+cvt.rn.f32.s32	%f129, %r96;
+// float(i) + 0.5f
+add.f32 	%f130, %f129, 0f3F000000;
+
+                                                          blk.z   j      i+0.5  i+0.5
+tex.a2d.v4.f32.f32	{%f131, %f132, %f133, %f134}, [%rd5, {%r8,    %f128, %f130, %f130}];
+
+// %f135 = iden * %f131 (tex read) + %f197 (%f197 =?= accumulator)
+fma.rn.f32 	%f135, %f124, %f131, %f197;
+.loc 1 65 28
+ld.shared.f32 	%f136, [%r81+4];
+mul.f32 	%f137, %f4, %f136;
+ld.shared.f32 	%f138, [%r83+4];
+mul.f32 	%f139, %f3, %f138;
+sub.f32 	%f140, %f139, %f137;
+add.f32 	%f141, %f1, %f140;
+.loc 1 65 34
+div.approx.f32 	%f142, %f34, %f141;
+mul.f32 	%f143, %f6, %f142;
+.loc 1 66 25
+mul.f32 	%f144, %f4, %f138;
+fma.rn.f32 	%f145, %f3, %f136, %f144;
+mul.f32 	%f146, %f5, %f145;
+fma.rn.f32 	%f147, %f143, %f146, %f2;
+.loc 1 77 21
+add.s32 	%r84, %r96, 1;
+cvt.rn.f32.s32	%f148, %r84;
+add.f32 	%f149, %f148, 0f3F000000;
+.loc 4 252 3
+tex.a2d.v4.f32.f32	{%f150, %f151, %f152, %f153}, [%rd5, {%r8, %f147, %f149, %f149}];
+.loc 1 77 39
+fma.rn.f32 	%f154, %f143, %f150, %f135;
+.loc 1 65 28
+ld.shared.f32 	%f155, [%r81+8];
+mul.f32 	%f156, %f4, %f155;
+ld.shared.f32 	%f157, [%r83+8];
+mul.f32 	%f158, %f3, %f157;
+sub.f32 	%f159, %f158, %f156;
+add.f32 	%f160, %f1, %f159;
+.loc 1 65 34
+div.approx.f32 	%f161, %f34, %f160;
+mul.f32 	%f162, %f6, %f161;
+.loc 1 66 25
+mul.f32 	%f163, %f4, %f157;
+fma.rn.f32 	%f164, %f3, %f155, %f163;
+mul.f32 	%f165, %f5, %f164;
+fma.rn.f32 	%f166, %f162, %f165, %f2;
+.loc 1 77 21
+add.s32 	%r85, %r96, 2;
+cvt.rn.f32.s32	%f167, %r85;
+add.f32 	%f168, %f167, 0f3F000000;
+.loc 4 252 3
+tex.a2d.v4.f32.f32	{%f169, %f170, %f171, %f172}, [%rd5, {%r8, %f166, %f168, %f168}];
+.loc 1 77 39
+fma.rn.f32 	%f173, %f162, %f169, %f154;
+.loc 1 65 28
+ld.shared.f32 	%f174, [%r81+12];
+mul.f32 	%f175, %f4, %f174;
+ld.shared.f32 	%f176, [%r83+12];
+mul.f32 	%f177, %f3, %f176;
+sub.f32 	%f178, %f177, %f175;
+add.f32 	%f179, %f1, %f178;
+.loc 1 65 34
+div.approx.f32 	%f180, %f34, %f179;
+mul.f32 	%f181, %f6, %f180;
+.loc 1 66 25
+mul.f32 	%f182, %f4, %f176;
+fma.rn.f32 	%f183, %f3, %f174, %f182;
+mul.f32 	%f184, %f5, %f183;
+fma.rn.f32 	%f185, %f181, %f184, %f2;
+.loc 1 77 21
+add.s32 	%r86, %r96, 3;
+cvt.rn.f32.s32	%f186, %r86;
+add.f32 	%f187, %f186, 0f3F000000;
+.loc 4 252 3
+tex.a2d.v4.f32.f32	{%f188, %f189, %f190, %f191}, [%rd5, {%r8, %f185, %f187, %f187}];
+.loc 1 77 39
+fma.rn.f32 	%f197, %f181, %f188, %f173;
+.loc 1 64 13
+add.s32 	%r97, %r97, 16;
+add.s32 	%r96, %r96, 4;
+setp.lt.s32	%p15, %r96, %r9;
+@%p15 bra 	BB0_20;

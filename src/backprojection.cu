@@ -22,6 +22,7 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
 
     const float dx = float(x) - cx + vol_cfg.dx + 0.5f;
     const float dy = float(y) - cy + vol_cfg.dx + 0.5f;
+    const float ndy = -dy;
 
     const float ids = __fdividef(1.0f, proj_cfg.det_spacing_u);
 
@@ -29,12 +30,13 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
     const int base = x + vol_cfg.width * (y + vol_cfg.height * blockIdx.z);
     const int pitch = vol_cfg.width * vol_cfg.height * blockDim.z * gridDim.z;
 
-    __shared__ float s_sin[4096];
-    __shared__ float s_cos[4096];
+    __shared__ float2 sincos[4096];
 
     for (int i = tid; i < proj_cfg.n_angles; i += 256) {
-        s_sin[i] = __sinf(angles[i]);
-        s_cos[i] = __cosf(angles[i]);
+        float2 tmp;
+        tmp.x = __sinf(angles[i]);
+        tmp.y = __cosf(angles[i]);
+        sincos[i] = tmp;
     }
     __syncthreads();
 
@@ -45,7 +47,7 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
 
         if (parallel_beam) {
             for (int i = 0; i < proj_cfg.n_angles; i++) {
-                float j = (s_cos[i] * dx + s_sin[i] * dy) * ids + cr;
+                float j = (sincos[i].y * dx + sincos[i].x * dy) * ids + cr;
                 if (channels == 1) {
                     accumulator[0] += tex2DLayered<float>(texture, j, i + 0.5f, blockIdx.z);
                 } else {
@@ -62,17 +64,9 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
             const float k = proj_cfg.s_dist + proj_cfg.d_dist;
 
             for (int i = 0; i < proj_cfg.n_angles; i++) {
-                float iden = k * __fdividef(1.0f, (-s_cos[i] * dy + s_sin[i] * dx + proj_cfg.s_dist));
-                float j = (s_cos[i] * dx + s_sin[i] * dy) * ids * iden + cr;
+                float iden = __fdividef(k, (sincos[i].y * ndy + sincos[i].x * dx + proj_cfg.s_dist));
+                float j = (sincos[i].y * dx + sincos[i].x * dy) * ids * iden + cr;
 
-            /*
-             const float kk = __fdividef(1.0f, proj_cfg.s_dist + proj_cfg.d_dist);
-
-            for (int i = 0; i < proj_cfg.n_angles; i++) {
-                float den = kk * (-s_cos[i] * dy + s_sin[i] * dx + proj_cfg.s_dist);
-                float iden = __fdividef(1.0f, den);
-                float j = (s_cos[i] * dx + s_sin[i] * dy) * ids * iden + cr;
-            */
                 if (channels == 1) {
                     accumulator[0] += tex2DLayered<float>(texture, j, i + 0.5f, blockIdx.z) * iden;
                 } else {

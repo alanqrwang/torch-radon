@@ -64,7 +64,7 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
             const float k = proj_cfg.s_dist + proj_cfg.d_dist;
 
             for (int i = 0; i < proj_cfg.n_angles; i++) {
-                float iden = __fdividef(k, (sincos[i].y * ndy + sincos[i].x * dx + proj_cfg.s_dist));
+                float iden = k * __fdividef(1.0f, (sincos[i].y * ndy + sincos[i].x * dx + proj_cfg.s_dist));
                 float j = (sincos[i].y * dx + sincos[i].x * dy) * ids * iden + cr;
 
                 if (channels == 1) {

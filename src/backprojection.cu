@@ -15,7 +15,6 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
     const uint x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint y = blockIdx.y * blockDim.y + threadIdx.y;
     const uint tid = threadIdx.y * blockDim.x + threadIdx.x;
-    const uint base_tex_layer = blockIdx.z * proj_cfg.n_angles;
 
     const float cx = vol_cfg.width / 2.0f;
     const float cy = vol_cfg.height / 2.0f;
@@ -26,6 +25,8 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
     const float ndy = -dy;
 
     const float ids = __fdividef(1.0f, proj_cfg.det_spacing_u);
+    const float sdx = dx * ids;
+    const float sdy = dy * ids;
 
 //    const uint batch_id = blockIdx.z * channels;
     const int base = x + vol_cfg.width * (y + vol_cfg.height * blockIdx.z);
@@ -48,12 +49,12 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
 
         if (parallel_beam) {
             for (int i = 0; i < proj_cfg.n_angles; i++) {
-                float j = (sincos[i].y * dx + sincos[i].x * dy) * ids + cr;
+                float j = sincos[i].y * sdx + sincos[i].x * sdy + cr;
                 if (channels == 1) {
-                    accumulator[0] += tex1DLayered<float>(texture, j, base_tex_layer + i);
+                    accumulator[0] += tex2DLayered<float>(texture, j, i+0.5f, blockIdx.z);
                 } else {
                     // read 4 values at the given position and accumulate
-                    float4 read = tex1DLayered<float4>(texture, j, base_tex_layer + i);
+                    float4 read = tex2DLayered<float4>(texture, j, i+0.5f, blockIdx.z);
                     accumulator[0] += read.x;
                     accumulator[1] += read.y;
                     accumulator[2] += read.z;
@@ -65,14 +66,14 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
             const uint n_angles = proj_cfg.n_angles;
 
             for (uint i = 0; i < n_angles; i++) {
-                float iden = k * __fdividef(1.0f, fmaf(sincos[i].y, ndy, sincos[i].x * dx + proj_cfg.s_dist));
-                float j = (sincos[i].y * dx + sincos[i].x * dy) * ids * iden + cr;
+                float iden = __fdividef(k, fmaf(sincos[i].y, ndy, sincos[i].x * dx + proj_cfg.s_dist));
+                float j = (sincos[i].y * sdx + sincos[i].x * sdy) * iden + cr;
 
                 if (channels == 1) {
-                    accumulator[0] += tex1DLayered<float>(texture, j, base_tex_layer + i) * iden;
+                    accumulator[0] += tex2DLayered<float>(texture, j, i+0.5f, blockIdx.z) * iden;
                 } else {
                     // read 4 values at the given position and accumulate
-                    float4 read = tex1DLayered<float4>(texture, j, base_tex_layer + i);
+                    float4 read = tex2DLayered<float4>(texture, j, i+0.5f, blockIdx.z);
                     accumulator[0] += read.x * iden;
                     accumulator[1] += read.y * iden;
                     accumulator[2] += read.z * iden;
@@ -100,16 +101,16 @@ void radon_backward_cuda(
     const int channels = exec_cfg.get_channels(batch_size);
 
     // copy x into CUDA Array (allocating it if needed) and bind to texture
-    const int tex_layers = proj_cfg.n_angles * batch_size / channels; 
+    // const int tex_layers = proj_cfg.n_angles * batch_size / channels; 
     Texture *tex = tex_cache.get(
-        create_1Dlayered_texture_config(device, proj_cfg.det_count_u, tex_layers, channels, precision)
+        {device, batch_size / channels, proj_cfg.n_angles, proj_cfg.det_count_u, true, channels, precision}
+        // create_1Dlayered_texture_config(device, proj_cfg.det_count_u, tex_layers, channels, precision)
     );
     tex->put(x);
 
     // dim3 block_dim(16, 16);
     dim3 block_dim = exec_cfg.block_dim;
     dim3 grid_dim = exec_cfg.get_grid_size(vol_cfg.height, vol_cfg.width, batch_size / channels);
-
 
     // Invoke kernel
     if (proj_cfg.projection_type == FANBEAM) {

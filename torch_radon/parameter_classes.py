@@ -67,5 +67,18 @@ class Projection:
             Projection.FANBEAM
         ))
 
+    @staticmethod
+    def coneflat(src_dist, det_dist, det_count_u, det_spacing_u=1.0, det_count_v=-1, det_spacing_v=-1.0, pitch=0.0, base_z=0.0):
+        det_count_v = det_count_v if det_count_v > 0 else det_count_u
+        det_spacing_v = det_spacing_v if det_spacing_v > 0 else det_spacing_u
+
+        return Projection(ProjectionCfg(
+            det_count_u, det_spacing_u,
+            det_count_v, det_spacing_v,
+            src_dist, det_dist,
+            pitch, base_z,
+            Projection.CONE_FLAT
+        ))
+
     def is_2d(self):
         return self.cfg.is_2d()

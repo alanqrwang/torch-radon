@@ -187,7 +187,7 @@ void Texture::put(const float *data) {
             }
         }
     }
-    checkCudaErrors(cudaDeviceSynchronize());
+    // checkCudaErrors(cudaDeviceSynchronize());
 }
 
 void Texture::put(const unsigned short *data) {

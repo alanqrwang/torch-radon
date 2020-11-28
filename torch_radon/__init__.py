@@ -58,8 +58,8 @@ class Radon:
         self.tex_cache = torch_radon_cuda.TextureCache(8)
         self.fourier_filters = FourierFilters()
 
-        # seed = np.random.get_state()[1][0]
-        # self.noise_generator = torch_radon_cuda.RadonNoiseGenerator(seed)
+        seed = np.random.get_state()[1][0]
+        self.noise_generator = torch_radon_cuda.RadonNoiseGenerator(seed)
 
     def _move_parameters_to_device(self, device):
         if device != self.angles.device:
@@ -129,14 +129,64 @@ class Radon:
         """
         return self.backprojection(sinogram)
 
-    # def set_seed(self, seed=-1):
-    #     if seed < 0:
-    #         seed = np.random.get_state()[1][0]
-    #
-    #     self.noise_generator.set_seed(seed)
-    #
-    # def __del__(self):
-    #     self.noise_generator.free()
+    @normalize_shape(2)
+    def filter_sinogram(self, sinogram, filter_name="ramp"):
+        # if not self.clip_to_circle:
+        #     warnings.warn("Filtered Backprojection with clip_to_circle=True will not produce optimal results."
+        #                   "To avoid this specify clip_to_circle=False inside Radon constructor.")
+
+        # Pad sinogram to improve accuracy
+        size = sinogram.size(2)
+        n_angles = sinogram.size(1)
+
+        padded_size = max(64, int(2 ** np.ceil(np.log2(2 * size))))
+        pad = padded_size - size
+
+        padded_sinogram = F.pad(sinogram.float(), (0, pad, 0, 0))
+        # TODO should be possible to use onesided=True saving memory and time
+        sino_fft = torch.rfft(padded_sinogram, 1, normalized=True, onesided=False)
+
+        # get filter and apply
+        f = self.fourier_filters.get(padded_size, filter_name, sinogram.device)
+        filtered_sino_fft = sino_fft * f
+
+        # Inverse fft
+        filtered_sinogram = torch.irfft(filtered_sino_fft, 1, normalized=True, onesided=False)
+
+        # pad removal and rescaling
+        filtered_sinogram = filtered_sinogram[:, :, :-pad] * (np.pi / (2 * n_angles))
+
+        return filtered_sinogram.to(dtype=sinogram.dtype)
+
+
+    @normalize_shape(2)
+    def add_noise(self, x, signal, density_normalization=1.0, approximate=False):
+        # print("WARN Radon.add_noise is deprecated")
+
+        torch_radon_cuda.add_noise(x, self.noise_generator, signal, density_normalization, approximate)
+        return x
+
+    @normalize_shape(2)
+    def emulate_readings(self, x, signal, density_normalization=1.0):
+        return torch_radon_cuda.emulate_sensor_readings(x, self.noise_generator, signal, density_normalization)
+
+    @normalize_shape(2)
+    def emulate_readings_new(self, x, signal, normal_std, k, bins):
+        return torch_radon_cuda.emulate_readings_new(x, self.noise_generator, signal, normal_std, k, bins)
+
+    @normalize_shape(2)
+    def readings_lookup(self, sensor_readings, lookup_table):
+        return torch_radon_cuda.readings_lookup(sensor_readings, lookup_table)
+
+
+    def set_seed(self, seed=-1):
+        if seed < 0:
+            seed = np.random.get_state()[1][0]
+
+        self.noise_generator.set_seed(seed)
+
+    def __del__(self):
+        self.noise_generator.free()
 
 
 class BaseRadon(abc.ABC):
@@ -226,110 +276,110 @@ class BaseRadon(abc.ABC):
         return torch_radon_cuda.readings_lookup(sensor_readings, lookup_table)
 
 
-class RadonFanbeam(BaseRadon):
-    r"""
-    |
-    .. image:: https://raw.githubusercontent.com/matteo-ronchetti/torch-radon/
-            master/pictures/fanbeam.svg?sanitize=true
-        :align: center
-        :width: 400px
-    |
-
-    Class that implements Radon projection for the Fanbeam geometry.
-
-    :param resolution: The resolution of the input images.
-    :param angles: Array containing the list of measuring angles. Can be a Numpy array or a PyTorch tensor.
-    :param source_distance: Distance between the source of rays and the center of the image.
-    :param det_distance: Distance between the detector plane and the center of the image.
-        By default it is =  :attr:`source_distance`.
-    :param det_count: Number of rays that will be projected. By default it is = :attr:`resolution`.
-    :param det_spacing: Distance between two contiguous rays.
-    :param clip_to_circle: If True both forward and backward projection will be restricted to pixels inside the circle
-        (highlighted in cyan).
-
-    .. note::
-        Currently only support resolutions which are multiples of 16.
-    """
-
-    def __init__(self, resolution: int, angles, source_distance: float, det_distance: float = -1, det_count: int = -1,
-                 det_spacing: float = -1, clip_to_circle=False):
-
-        if det_count <= 0:
-            det_count = resolution
-
-        if det_distance < 0:
-            det_distance = source_distance
-            det_spacing = 2.0
-        if det_spacing < 0:
-            det_spacing = (source_distance + det_distance) / source_distance
-
-        vol_cfg = VolumeCfg(
-            0, resolution, resolution,
-            0.0, 0.0, 0.0,
-            False
-        )
-
-        proj_cfg = ProjectionCfg(
-            # det_count_u, det_spacing_u, det_count_z, det_spacing_z
-            det_count, det_spacing, 0, 0.0,
-            # n_angles, clip_to_circle
-            len(angles), clip_to_circle,
-            # source and detector distances
-            source_distance, det_distance,
-            # pitch, initial_z
-            0.0, 0.0,
-            # projection type
-            1
-        )
-
-        super().__init__(angles, vol_cfg, proj_cfg, ExecCfgGeneratorBase())
-
-        self.source_distance = source_distance
-        self.det_distance = det_distance
-        self.det_count = det_count
-        self.det_spacing = det_spacing
-
-
-class RadonConeFlat(BaseRadon):
-    def __init__(self, volume_shape, angles, source_distance: float, det_distance: float = -1, det_count: int = -1,
-                 det_spacing: float = -1, pitch=0.0):
-
-        resolution = max(volume_shape)
-
-        if det_count <= 0:
-            det_count = resolution
-
-        if det_distance < 0:
-            det_distance = source_distance
-            det_spacing = 2.0
-        if det_spacing < 0:
-            det_spacing = (source_distance + det_distance) / source_distance
-
-        vol_cfg = VolumeCfg(
-            volume_shape[0], volume_shape[1], volume_shape[2],
-            0.0, 0.0, 0.0,
-            True
-        )
-
-        proj_cfg = ProjectionCfg(
-            # det_count_u, det_spacing_u, det_count_z, det_spacing_z
-            det_count, det_spacing, det_count, det_spacing,
-            # n_angles, clip_to_circle
-            len(angles), False,
-            # source and detector distances
-            source_distance, det_distance,
-            # pitch, initial_z
-            pitch, 0.0,
-            # projection type
-            2
-        )
-
-        super().__init__(-angles, vol_cfg, proj_cfg, ExecCfgGeneratorBase())
-
-        self.source_distance = source_distance
-        self.det_distance = det_distance
-        self.det_count = det_count
-        self.det_spacing = det_spacing
+# class RadonFanbeam(BaseRadon):
+#     r"""
+#     |
+#     .. image:: https://raw.githubusercontent.com/matteo-ronchetti/torch-radon/
+#             master/pictures/fanbeam.svg?sanitize=true
+#         :align: center
+#         :width: 400px
+#     |
+#
+#     Class that implements Radon projection for the Fanbeam geometry.
+#
+#     :param resolution: The resolution of the input images.
+#     :param angles: Array containing the list of measuring angles. Can be a Numpy array or a PyTorch tensor.
+#     :param source_distance: Distance between the source of rays and the center of the image.
+#     :param det_distance: Distance between the detector plane and the center of the image.
+#         By default it is =  :attr:`source_distance`.
+#     :param det_count: Number of rays that will be projected. By default it is = :attr:`resolution`.
+#     :param det_spacing: Distance between two contiguous rays.
+#     :param clip_to_circle: If True both forward and backward projection will be restricted to pixels inside the circle
+#         (highlighted in cyan).
+#
+#     .. note::
+#         Currently only support resolutions which are multiples of 16.
+#     """
+#
+#     def __init__(self, resolution: int, angles, source_distance: float, det_distance: float = -1, det_count: int = -1,
+#                  det_spacing: float = -1, clip_to_circle=False):
+#
+#         if det_count <= 0:
+#             det_count = resolution
+#
+#         if det_distance < 0:
+#             det_distance = source_distance
+#             det_spacing = 2.0
+#         if det_spacing < 0:
+#             det_spacing = (source_distance + det_distance) / source_distance
+#
+#         vol_cfg = VolumeCfg(
+#             0, resolution, resolution,
+#             0.0, 0.0, 0.0,
+#             False
+#         )
+#
+#         proj_cfg = ProjectionCfg(
+#             # det_count_u, det_spacing_u, det_count_z, det_spacing_z
+#             det_count, det_spacing, 0, 0.0,
+#             # n_angles, clip_to_circle
+#             len(angles), clip_to_circle,
+#             # source and detector distances
+#             source_distance, det_distance,
+#             # pitch, initial_z
+#             0.0, 0.0,
+#             # projection type
+#             1
+#         )
+#
+#         super().__init__(angles, vol_cfg, proj_cfg, ExecCfgGeneratorBase())
+#
+#         self.source_distance = source_distance
+#         self.det_distance = det_distance
+#         self.det_count = det_count
+#         self.det_spacing = det_spacing
+#
+#
+# class RadonConeFlat(BaseRadon):
+#     def __init__(self, volume_shape, angles, source_distance: float, det_distance: float = -1, det_count: int = -1,
+#                  det_spacing: float = -1, pitch=0.0):
+#
+#         resolution = max(volume_shape)
+#
+#         if det_count <= 0:
+#             det_count = resolution
+#
+#         if det_distance < 0:
+#             det_distance = source_distance
+#             det_spacing = 2.0
+#         if det_spacing < 0:
+#             det_spacing = (source_distance + det_distance) / source_distance
+#
+#         vol_cfg = VolumeCfg(
+#             volume_shape[0], volume_shape[1], volume_shape[2],
+#             0.0, 0.0, 0.0,
+#             True
+#         )
+#
+#         proj_cfg = ProjectionCfg(
+#             # det_count_u, det_spacing_u, det_count_z, det_spacing_z
+#             det_count, det_spacing, det_count, det_spacing,
+#             # n_angles, clip_to_circle
+#             len(angles), False,
+#             # source and detector distances
+#             source_distance, det_distance,
+#             # pitch, initial_z
+#             pitch, 0.0,
+#             # projection type
+#             2
+#         )
+#
+#         super().__init__(-angles, vol_cfg, proj_cfg, ExecCfgGeneratorBase())
+#
+#         self.source_distance = source_distance
+#         self.det_distance = det_distance
+#         self.det_count = det_count
+#         self.det_spacing = det_spacing
 
 
 def compute_lookup_table(sinogram, signal, normal_std, bins=4096, eps=0.01, eps_prob=0.99, eps_k=0.01, verbose=False):

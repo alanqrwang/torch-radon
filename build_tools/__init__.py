@@ -47,7 +47,7 @@ def render_template(src, dst):
 
 # 80, 86 are only for CUDA 11
 # TODO add 80, 86 if CUDA 11
-def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/cuda", cxx="g++",
+def build(compute_capabilites=(60, 70, 75), debug=False, cuda_home="/usr/local/cuda", cxx="g++",
           keep_intermediate=True):
     nvcc = f"{cuda_home}/bin/nvcc"
     include_dirs = ["./include"]
@@ -60,16 +60,14 @@ def build(compute_capabilites=(60, 70, 75), verbose=True, cuda_home="/usr/local/
 
     all_objects = [y for x, y in cu_files + cpp_files]
 
-    include_flags = [f"-I{x}" for x in include_dirs]
-    cxx_flags = ["-std=c++11 -fPIC -static"] + include_flags + ["-O3"]
-    nvcc_base_flags = ["-std=c++11", f"-ccbin={cxx}", "-Xcompiler", "-fPIC", "-Xcompiler -static",
-                       "-Xcompiler -D_GLIBCXX_USE_CXX11_ABI=0"] + include_flags + [
-                          "-DNDEBUG -O3 --generate-line-info --compiler-options -Wall"]
-    nvcc_flags = nvcc_base_flags + [f"-gencode arch=compute_{x},code=sm_{x}" for x in compute_capabilites]
+    opt_flags = ["-g", "-Og", "-DVERBOSE"] if debug else ["-DNDEBUG", "-O3"]
 
-    if verbose:
-        cxx_flags.append("-DVERBOSE")
-        nvcc_flags.append("-DVERBOSE")
+    include_flags = [f"-I{x}" for x in include_dirs]
+    cxx_flags = ["-std=c++11 -fPIC -static"] + include_flags + opt_flags
+    nvcc_base_flags = ["-std=c++11", f"-ccbin={cxx}", "-Xcompiler", "-fPIC", "-Xcompiler -static",
+                       "-Xcompiler -D_GLIBCXX_USE_CXX11_ABI=0"] + include_flags + opt_flags + [
+                           "--generate-line-info --compiler-options -Wall"]
+    nvcc_flags = nvcc_base_flags + [f"-gencode arch=compute_{x},code=sm_{x}" for x in compute_capabilites]
 
     if keep_intermediate:
         if not os.path.exists(intermediate_dir):

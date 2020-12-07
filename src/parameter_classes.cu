@@ -1,8 +1,12 @@
 #include "parameter_classes.h"
 #include "utils.h"
 
-VolumeCfg::VolumeCfg(int d, int h, int w, float _dz, float _dy, float _dx, bool ddd)
-        : depth(d), height(h), width(w), dz(_dz), dy(_dy), dx(_dx), is_3d(ddd) {}
+VolumeCfg::VolumeCfg(int d, int h, int w, float _dz, float _dy, float _dx, float _sz, float _sy, float _sx, bool ddd)
+        : depth(d), height(h), width(w),
+        dz(_dz), dy(_dy), dx(_dx), 
+        sz(_sz), sy(_sy), sx(_sx),
+        inv_scale_z(1.0f / sz), inv_scale_y(1.0f / sy), inv_scale_x(1.0f / sx), 
+        is_3d(ddd) {}
 
 ProjectionCfg::ProjectionCfg(int dc_u, float ds_u, int dc_v, float ds_v, float sd, float dd,
                   float pi, float iz, int pt)
@@ -34,8 +38,8 @@ ProjectionCfg ProjectionCfg::copy() const{
 //}
 
 
-ExecCfg::ExecCfg(int x, int y, int z, int ch)
-        :block_dim(x, y, z), channels(ch) {}
+ExecCfg::ExecCfg(int x, int y, int z, int ch, float sr)
+        :block_dim(x, y, z), channels(ch), sampling_rate(sr) {}
 
 dim3 ExecCfg::get_grid_size(int x, int y, int z) const{
     return dim3(roundup_div(x, block_dim.x), roundup_div(y, block_dim.y), roundup_div(z, block_dim.z));

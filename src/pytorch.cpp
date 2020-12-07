@@ -272,7 +272,7 @@ py::class_<RadonNoiseGenerator>(m,"RadonNoiseGenerator")
     .def("free", &RadonNoiseGenerator::free);
 
 py::class_<VolumeCfg>(m,"VolumeCfg")
-    .def(py::init<int, int, int, float, float, float, bool>())
+    .def(py::init<int, int, int, float, float, float, float, float, float, bool>())
     .def_readonly("depth", &VolumeCfg::depth)
     .def_readonly("height", &VolumeCfg::height)
     .def_readonly("width", &VolumeCfg::width)
@@ -298,6 +298,6 @@ py::class_<ProjectionCfg>(m,"ProjectionCfg")
     .def_readwrite("n_angles", &ProjectionCfg::n_angles);
 
 py::class_<ExecCfg>(m,"ExecCfg")
-    .def(py::init<int, int, int, int>());
+    .def(py::init<int, int, int, int, float>());
 }
 

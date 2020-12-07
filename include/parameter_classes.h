@@ -19,9 +19,19 @@ public:
     float dy;
     float dx;
 
+    // size of a cell along each axis
+    float sz;
+    float sy;
+    float sx;
+
+    // inverse of size
+    float inv_scale_z;
+    float inv_scale_y;
+    float inv_scale_x;
+
     bool is_3d;
 
-    VolumeCfg(int d, int h, int w, float _dz, float _dy, float _dx, bool ddd);
+    VolumeCfg(int d, int h, int w, float _dz, float _dy, float _dx, float _sz, float _sy, float _sx, bool ddd);
 };
 
 class ProjectionCfg {
@@ -65,7 +75,9 @@ public:
 
     int channels;
 
-    ExecCfg(int x, int y, int z, int ch);
+    float sampling_rate;
+
+    ExecCfg(int x, int y, int z, int ch, float sr);
 
     dim3 get_grid_size(int x, int y = 1, int z = 1) const;
 

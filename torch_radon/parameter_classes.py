@@ -6,26 +6,28 @@ Classes that wrap their C++ counterparts offering easy to use APIs
 
 
 class Volume:
-    def __init__(self, depth, height, width, dz, dy, dx, is_3d):
+    def __init__(self, depth, height, width, dz, dy, dx, sz, sy, sx, is_3d):
         self.cfg = VolumeCfg(
             depth, height, width,
             dz, dy, dx,
+            sz, sy, sx,
             is_3d
         )
 
     @staticmethod
-    def create_2d(height, width=-1, dy=0.0, dx=0.0):
+    def create_2d(height, width=-1, dy=0.0, dx=0.0, sy=1.0, sx=1.0):
         if width <= 0:
             width = height
 
         return Volume(
             0, height, width,
             0.0, dy, dx,
+            1.0, sy, sx,
             False
         )
 
     @staticmethod
-    def create_3d(depth, height=-1, width=-1, dz=0.0, dy=0.0, dx=0.0):
+    def create_3d(depth, height=-1, width=-1, dz=0.0, dy=0.0, dx=0.0, sz=1.0, sy=1.0, sx=1.0):
         if height <= 0:
             height = depth
 
@@ -35,6 +37,7 @@ class Volume:
         return Volume(
             depth, height, width,
             dz, dy, dx,
+            sz, sy, sx,
             True
         )
 

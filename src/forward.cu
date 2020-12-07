@@ -11,7 +11,7 @@
 template<bool parallel_beam, int channels, typename T>
 __global__ void
 radon_forward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const float *__restrict__ angles,
-                     const VolumeCfg vol_cfg, const ProjectionCfg proj_cfg) {
+                     const VolumeCfg vol_cfg, const ProjectionCfg proj_cfg, const float sampling_rate=1.0) {
     // Calculate texture coordinates
     const int ray_id = blockIdx.x * blockDim.x + threadIdx.x;
     const int angle_id = blockIdx.y * blockDim.y + threadIdx.y;
@@ -45,40 +45,49 @@ radon_forward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const 
         const float cs = __cosf(angle);
         const float sn = __sinf(angle);
 
-        // start position rs and direction rd
+        // start position rs and direction rd (in detector coordinate system)
         float rsx = sx * cs - sy * sn;
         float rsy = sx * sn + sy * cs;
         float rdx = ex * cs - ey * sn - rsx;
         float rdy = ex * sn + ey * cs - rsy;
+
+        // convert coordinates to volume coordinate system
+        const float vol_orig_x = vol_cfg.dx - 0.5f * vol_cfg.width;
+        const float vol_orig_y = vol_cfg.dy - 0.5f * vol_cfg.height;
+        rsx = (rsx - vol_orig_x) * vol_cfg.inv_scale_x; 
+        rsy = (rsy - vol_orig_y) * vol_cfg.inv_scale_y; 
+        rdx = rdx * vol_cfg.inv_scale_x; 
+        rdy = rdy * vol_cfg.inv_scale_y; 
 
 //        if(angle_id == 0 && ray_id < 3){
 //            printf("%d %d\n", pitch, blockDim.z);
 ////            printf("O %f %f -> %f %f\n", rsx, rsy, rdx, rdy);
 //        }
 
-
         // clip to volume (to reduce memory reads)
         constexpr float pad = 0.5f;
-        const float alpha_x_m = (vol_cfg.dx - 0.5f * vol_cfg.width - pad - rsx) / rdx;
-        const float alpha_x_p = (vol_cfg.dx + 0.5f * vol_cfg.width + pad - rsx) / rdx;
-        const float alpha_y_m = (vol_cfg.dy - 0.5f * vol_cfg.height - pad - rsy) / rdy;
-        const float alpha_y_p = (vol_cfg.dy + 0.5f * vol_cfg.height + pad - rsy) / rdy;
+        const float alpha_x_m = (- pad - rsx) / rdx;
+        const float alpha_x_p = (vol_cfg.width + pad - rsx) / rdx;
+        const float alpha_y_m = (- pad - rsy) / rdy;
+        const float alpha_y_p = (vol_cfg.height + pad - rsy) / rdy;
         const float alpha_s = max(min(alpha_x_p, alpha_x_m), min(alpha_y_p, alpha_y_m));
         const float alpha_e = min(max(alpha_x_p, alpha_x_m), max(alpha_y_p, alpha_y_m));
 
+        // if ray volume intersection is empty exit
+        // TODO use goto?
         if (alpha_s > alpha_e) {
 #pragma unroll
             for (int b = 0; b < channels; b++) output[base + b * pitch] = 0.0f;
             return;
         }
 
-        rsx += rdx * alpha_s + vol_cfg.width * 0.5f;
-        rsy += rdy * alpha_s + vol_cfg.height * 0.5f;
+        rsx += rdx * alpha_s;
+        rsy += rdy * alpha_s;
         rdx *= (alpha_e - alpha_s);
         rdy *= (alpha_e - alpha_s);
 
 //        const uint n_steps = __float2uint_ru(hypot(rdx, rdy));
-        const uint n_steps = __float2uint_ru(max(abs(rdx), abs(rdy)));
+        const uint n_steps = __float2uint_ru(sampling_rate*max(abs(rdx), abs(rdy)));
         const float vx = rdx / n_steps;
         const float vy = rdy / n_steps;
         const float n = hypot(vx, vy);
@@ -87,7 +96,7 @@ radon_forward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const 
 //            printf("C %f %f -> %f %f  %d\n", rsx, rsy, rdx, rdy, n_steps);
 //        }
 
-        for (uint j = 0; j <= n_steps; j++) { //changing j and n_steps to int make nvcc use unrolling
+        for (uint j = 0; j <= n_steps; j++) { //changing j and n_steps to int makes nvcc use unrolling
             if (channels == 1) {
                 accumulator[0] += tex2DLayered<float>(texture, rsx, rsy, blockIdx.z);
             } else {
@@ -133,27 +142,27 @@ void radon_forward_cuda(
     if (proj_cfg.projection_type == FANBEAM) {
         if (channels == 1) {
             radon_forward_kernel<false, 1> << < grid_dim, exec_cfg.block_dim >> >
-                                                                     ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                     ((float*)y, tex->texture, angles, vol_cfg, proj_cfg, exec_cfg.sampling_rate);
         } else {
             if (is_float) {
                 radon_forward_kernel<false, 4> << < grid_dim, exec_cfg.block_dim >> >
-                                                                         ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                         ((float*)y, tex->texture, angles, vol_cfg, proj_cfg, exec_cfg.sampling_rate);
             } else {
                 radon_forward_kernel<false, 4> << < grid_dim, exec_cfg.block_dim >> >
-                                                                         ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                         ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg, exec_cfg.sampling_rate);
             }
         }
     } else {
         if (channels == 1) {
             radon_forward_kernel<true, 1> << < grid_dim, exec_cfg.block_dim >> >
-                                                                    ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                    ((float*)y, tex->texture, angles, vol_cfg, proj_cfg, exec_cfg.sampling_rate);
         } else {
             if (is_float) {
                 radon_forward_kernel<true, 4> << < grid_dim, exec_cfg.block_dim >> >
-                                                                        ((float*)y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                        ((float*)y, tex->texture, angles, vol_cfg, proj_cfg, exec_cfg.sampling_rate);
             } else {
                 radon_forward_kernel<true, 4> << < grid_dim, exec_cfg.block_dim >> >
-                                                                        ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg);
+                                                                        ((__half *) y, tex->texture, angles, vol_cfg, proj_cfg, exec_cfg.sampling_rate);
             }
         }
     }

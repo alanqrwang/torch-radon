@@ -21,7 +21,7 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
     const float cr = proj_cfg.det_count_u / 2.0f;
 
     const float dx = float(x) - cx + vol_cfg.dx + 0.5f;
-    const float dy = float(y) - cy + vol_cfg.dx + 0.5f;
+    const float dy = float(y) - cy + vol_cfg.dy + 0.5f;
     const float ndy = -dy;
 
     const float ids = __fdividef(1.0f, proj_cfg.det_spacing_u);
@@ -110,7 +110,7 @@ void radon_backward_cuda(
 
     // dim3 block_dim(16, 16);
     dim3 block_dim = exec_cfg.block_dim;
-    dim3 grid_dim = exec_cfg.get_grid_size(vol_cfg.height, vol_cfg.width, batch_size / channels);
+    dim3 grid_dim = exec_cfg.get_grid_size(vol_cfg.width, vol_cfg.height, batch_size / channels);
 
     // Invoke kernel
     if (proj_cfg.projection_type == FANBEAM) {

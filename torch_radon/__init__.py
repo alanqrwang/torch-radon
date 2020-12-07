@@ -25,9 +25,9 @@ class ExecCfgGeneratorBase:
     def __call__(self, vol_cfg, proj_cfg, is_half):
         if proj_cfg.projection_type == 2:
             ch = 4 if is_half else 1
-            return ExecCfg(8, 16, 8, ch)
+            return ExecCfg(8, 16, 8, ch, 1.0)
 
-        return ExecCfg(16, 16, 1, 4)
+        return ExecCfg(16, 16, 1, 4, 1.0)
 
 
 class Radon:
@@ -131,29 +131,22 @@ class Radon:
 
     @normalize_shape(2)
     def filter_sinogram(self, sinogram, filter_name="ramp"):
-        # if not self.clip_to_circle:
-        #     warnings.warn("Filtered Backprojection with clip_to_circle=True will not produce optimal results."
-        #                   "To avoid this specify clip_to_circle=False inside Radon constructor.")
-
-        # Pad sinogram to improve accuracy
         size = sinogram.size(2)
         n_angles = sinogram.size(1)
 
+        # Pad sinogram to improve accuracy
         padded_size = max(64, int(2 ** np.ceil(np.log2(2 * size))))
         pad = padded_size - size
-
         padded_sinogram = F.pad(sinogram.float(), (0, pad, 0, 0))
-        # TODO should be possible to use onesided=True saving memory and time
-        sino_fft = torch.rfft(padded_sinogram, 1, normalized=True, onesided=False)
+
+        sino_fft = torch.fft.rfft(padded_sinogram, norm="ortho")
 
         # get filter and apply
-        f = self.fourier_filters.get(padded_size, filter_name, sinogram.device)
+        f = self.fourier_filters.get(padded_size, "ramp", sinogram.device)
         filtered_sino_fft = sino_fft * f
 
         # Inverse fft
-        filtered_sinogram = torch.irfft(filtered_sino_fft, 1, normalized=True, onesided=False)
-
-        # pad removal and rescaling
+        filtered_sinogram = torch.fft.irfft(filtered_sino_fft, padded_size, norm="ortho")
         filtered_sinogram = filtered_sinogram[:, :, :-pad] * (np.pi / (2 * n_angles))
 
         return filtered_sinogram.to(dtype=sinogram.dtype)

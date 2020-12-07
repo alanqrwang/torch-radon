@@ -3,14 +3,15 @@ TODO:
  - Fix non square images 3D
  - Add support for volume translation 3D
  - Add non uniform scales
- - migrate all benchmarks to dedicated repo
  - tune exec configurations
  - provide automatic exec configurator
- - look for optimizations in generated PTX
+ - look for optimizations in generated PTX 3D
  - Document new API
  - Remove unnecessary files
 
 DONE:
+ - look for optimizations in generated PTX 2D
+ - migrate all benchmarks to dedicated repo
  - Fix fft warnings in FBP
  - more detailed benchmarks
  - Fix non square images 2D

@@ -5,6 +5,28 @@ import torch
 
 from torch_radon import Radon, Projection, ExecCfg
 
+import time
+
+
+def benchmark(f, x, warmup, repeats, min_time):
+    for _ in range(warmup):
+        y = f(x)
+
+    count = 0
+    torch.cuda.synchronize()
+    s = time.time()
+    while True:
+        y = f(x)
+        torch.cuda.synchronize()
+        count += 1
+        e = time.time()
+        if count >= repeats and (e-s) >= min_time:
+            break
+
+    mean_execution_time = (time.time() - s)/count
+
+    return mean_execution_time
+
 dy = 16
 dx = 32
 device = torch.device("cuda")
@@ -24,30 +46,31 @@ cropped_img_d = img_d[max(-dy, 0):max(-dy, 0) + cropped_h, max(-dx, 0):max(-dx, 
 print(np.linalg.norm(cropped_img-cropped_img_d))
 
 angles = np.linspace(0, np.pi, 128, endpoint=False)
-projection = Projection.parallel_beam(256)
+projection = Projection.fanbeam(256, 256, 256)
 
 radon = Radon(angles, vol, projection)
-radon_d = Radon(angles, vol_d, projection)
+# radon_d = Radon(angles, vol_d, projection)
 
 with torch.no_grad():
-    x = torch.FloatTensor(img).to(device)
-    x_d = torch.FloatTensor(img_d).to(device)
+    x = torch.FloatTensor(img).to(device).unsqueeze(0).repeat(32, 1, 1)
+    # x_d = torch.FloatTensor(img_d).to(device)
 
-    sinogram = radon.forward(x)
-    sinogram_d = radon_d.forward(x_d)
+    print(benchmark(lambda y: radon.forward(y, exec_cfg=ExecCfg(16, 16, 1, 4, 1.0)), x, 10, 100, 5.0))
+    print(benchmark(lambda y: radon.forward(y, exec_cfg=ExecCfg(16, 16, 1, 4, 1.0)), x, 10, 100, 5.0))
+    # sinogram_d = radon_d.forward(x_d)
 
-    bp = radon.backprojection(sinogram)
-    bp_d = radon_d.backprojection(sinogram_d)
+    # bp = radon.backprojection(sinogram)
+    # bp_d = radon_d.backprojection(sinogram_d)
 
-cropped_bp = bp[max(dy, 0):max(dy, 0) + cropped_h, max(dx, 0):max(dx, 0) + cropped_w] 
-cropped_bp_d = bp_d[max(-dy, 0):max(-dy, 0) + cropped_h, max(-dx, 0):max(-dx, 0) + cropped_w]
-print(torch.norm(cropped_bp - cropped_bp_d) / torch.norm(cropped_bp))
+# cropped_bp = bp[max(dy, 0):max(dy, 0) + cropped_h, max(dx, 0):max(dx, 0) + cropped_w] 
+# cropped_bp_d = bp_d[max(-dy, 0):max(-dy, 0) + cropped_h, max(-dx, 0):max(-dx, 0) + cropped_w]
+# print(torch.norm(cropped_bp - cropped_bp_d) / torch.norm(cropped_bp))
 
-plt.imshow(cropped_bp.cpu().float().numpy())
-plt.figure()
-plt.imshow(cropped_bp_d.cpu().float().numpy())
+# plt.imshow(cropped_bp.cpu().float().numpy())
+# plt.figure()
+# plt.imshow(cropped_bp_d.cpu().float().numpy())
 
-plt.show()
+# plt.show()
 
 # device = torch.device('cuda')
 

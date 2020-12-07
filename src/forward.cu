@@ -87,16 +87,16 @@ radon_forward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const 
         rdy *= (alpha_e - alpha_s);
 
 //        const uint n_steps = __float2uint_ru(hypot(rdx, rdy));
-        const uint n_steps = __float2uint_ru(sampling_rate*max(abs(rdx), abs(rdy)));
+        const int n_steps = __float2int_ru(sampling_rate*max(abs(rdx), abs(rdy)));
         const float vx = rdx / n_steps;
         const float vy = rdy / n_steps;
         const float n = hypot(vx, vy);
-
 //        if(angle_id == 0 && ray_id < 3){
 //            printf("C %f %f -> %f %f  %d\n", rsx, rsy, rdx, rdy, n_steps);
 //        }
 
-        for (uint j = 0; j <= n_steps; j++) { //changing j and n_steps to int makes nvcc use unrolling
+        #pragma unroll(4)
+        for (int j = 0; j <= n_steps; j++) {
             if (channels == 1) {
                 accumulator[0] += tex2DLayered<float>(texture, rsx, rsy, blockIdx.z);
             } else {

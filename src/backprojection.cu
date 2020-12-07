@@ -22,7 +22,6 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
 
     const float dx = float(x) - cx + vol_cfg.dx + 0.5f;
     const float dy = float(y) - cy + vol_cfg.dy + 0.5f;
-    const float ndy = -dy;
 
     const float ids = __fdividef(1.0f, proj_cfg.det_spacing_u);
     const float sdx = dx * ids;
@@ -48,37 +47,47 @@ radon_backward_kernel(T *__restrict__ output, cudaTextureObject_t texture, const
         for (int i = 0; i < channels; i++) accumulator[i] = 0.0f;
 
         if (parallel_beam) {
-            for (int i = 0; i < proj_cfg.n_angles; i++) {
+            const int n_angles = proj_cfg.n_angles;
+            
+            // keep a float version of i to avoid expensive int2float conversions inside the main loop
+            float fi = 0.5f;
+            #pragma unroll(16)
+            for (int i = 0; i < n_angles; i++) {
                 float j = sincos[i].y * sdx + sincos[i].x * sdy + cr;
                 if (channels == 1) {
-                    accumulator[0] += tex2DLayered<float>(texture, j, i+0.5f, blockIdx.z);
+                    accumulator[0] += tex2DLayered<float>(texture, j, fi, blockIdx.z);
                 } else {
                     // read 4 values at the given position and accumulate
-                    float4 read = tex2DLayered<float4>(texture, j, i+0.5f, blockIdx.z);
+                    float4 read = tex2DLayered<float4>(texture, j, fi, blockIdx.z);
                     accumulator[0] += read.x;
                     accumulator[1] += read.y;
                     accumulator[2] += read.z;
                     accumulator[3] += read.w;
                 }
+                fi += 1.0f;
             }
         } else {
             const float k = proj_cfg.s_dist + proj_cfg.d_dist;
-            const uint n_angles = proj_cfg.n_angles;
-
-            for (uint i = 0; i < n_angles; i++) {
-                float iden = __fdividef(k, fmaf(sincos[i].y, ndy, sincos[i].x * dx + proj_cfg.s_dist));
+            const int n_angles = proj_cfg.n_angles;
+            
+            // keep a float version of i to avoid expensive int2float conversions inside the main loop
+            float fi = 0.5f;
+            #pragma unroll(16)
+            for (int i = 0; i < n_angles; i++) {
+                float iden = __fdividef(k, fmaf(sincos[i].y, -dy, sincos[i].x * dx + proj_cfg.s_dist));
                 float j = (sincos[i].y * sdx + sincos[i].x * sdy) * iden + cr;
 
                 if (channels == 1) {
-                    accumulator[0] += tex2DLayered<float>(texture, j, i+0.5f, blockIdx.z) * iden;
+                    accumulator[0] += tex2DLayered<float>(texture, j, fi, blockIdx.z) * iden;
                 } else {
                     // read 4 values at the given position and accumulate
-                    float4 read = tex2DLayered<float4>(texture, j, i+0.5f, blockIdx.z);
+                    float4 read = tex2DLayered<float4>(texture, j, fi, blockIdx.z);
                     accumulator[0] += read.x * iden;
                     accumulator[1] += read.y * iden;
                     accumulator[2] += read.z * iden;
                     accumulator[3] += read.w * iden;
                 }
+                fi += 1.0f;
             }
         }
 
